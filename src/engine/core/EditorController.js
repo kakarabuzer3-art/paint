@@ -31,6 +31,7 @@ import EyedropperTool from '../tools/EyedropperTool.js'
 import ShapeTool from '../tools/ShapeTool.js'
 import EllipseTool from '../tools/EllipseTool.js'
 import LineTool from '../tools/LineTool.js'
+import TextTool from '../tools/TextTool.js'
 import SelectTool from '../tools/SelectTool.js'
 import LassoTool from '../tools/LassoTool.js'
 import MagicWandTool from '../tools/MagicWandTool.js'
@@ -121,6 +122,7 @@ export default class EditorController {
       .register(ShapeTool)
       .register(EllipseTool)
       .register(LineTool)
+      .register(TextTool)
       .register(SelectTool)
       .register(LassoTool)
       .register(MagicWandTool)
