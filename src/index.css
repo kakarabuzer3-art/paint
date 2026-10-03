@@ -1,0 +1,330 @@
+@import 'tailwindcss';
+
+/* =========================================================================
+   AURORA GLASS — DESIGN TOKENS
+   Tailwind v4 CSS-first config. Every token below generates utilities,
+   e.g. --color-aurora-violet -> bg-aurora-violet / text-aurora-violet.
+   ========================================================================= */
+@theme {
+  /* ---- Substrate (deep studio void) ---- */
+  --color-void: #07060c;
+  --color-abyss: #0c0a15;
+  --color-ink: #13111f;
+  --color-slate-glass: #1a172a;
+
+  /* ---- Aurora accents ---- */
+  --color-aurora-violet: #8b5cf6;
+  --color-aurora-indigo: #6366f1;
+  --color-aurora-cyan: #22d3ee;
+  --color-aurora-teal: #2dd4bf;
+  --color-aurora-magenta: #e879f9;
+  --color-aurora-amber: #fbbf24;
+
+  /* ---- Foreground ---- */
+  --color-fg: #f5f4ff;
+  --color-fg-muted: #bab6d6;
+  --color-fg-subtle: #8a85a8;
+
+  /* ---- Hairlines ---- */
+  --color-line: rgb(255 255 255 / 0.1);
+  --color-line-strong: rgb(255 255 255 / 0.2);
+
+  /* ---- Typography ---- */
+  --font-sans:
+    'Segoe UI Variable Text', 'Segoe UI', -apple-system, BlinkMacSystemFont, 'SF Pro Text', Roboto,
+    Helvetica, Arial, sans-serif;
+  --font-display:
+    'Segoe UI Variable Display', 'Segoe UI', -apple-system, BlinkMacSystemFont, 'SF Pro Display',
+    Roboto, Helvetica, Arial, sans-serif;
+  --font-mono: 'Cascadia Mono', 'SFMono-Regular', Menlo, Consolas, 'Liberation Mono', monospace;
+
+  /* ---- Radii ---- */
+  --radius-xs: 7px;
+  --radius-sm: 10px;
+  --radius-md: 13px;
+  --radius-panel: 17px;
+  --radius-lg: 22px;
+
+  /* ---- Motion ---- */
+  --ease-out-soft: cubic-bezier(0.22, 0.61, 0.36, 1);
+  --ease-spring: cubic-bezier(0.34, 1.4, 0.64, 1);
+  --ease-in-out-quint: cubic-bezier(0.83, 0, 0.17, 1);
+
+  /* ---- Elevation ---- */
+  --shadow-glass:
+    inset 0 1px 0 0 rgb(255 255 255 / 0.07), 0 18px 44px -14px rgb(0 0 0 / 0.6),
+    0 2px 6px -1px rgb(0 0 0 / 0.45);
+  --shadow-float:
+    inset 0 1px 0 0 rgb(255 255 255 / 0.1), 0 28px 70px -22px rgb(0 0 0 / 0.72),
+    0 3px 10px -2px rgb(0 0 0 / 0.5);
+  --shadow-inset-well: inset 0 2px 6px -1px rgb(0 0 0 / 0.55);
+
+  /* ---- Animations ---- */
+  --animate-aurora-drift: aurora-drift 26s var(--ease-in-out-quint) infinite alternate;
+  --animate-aurora-drift-slow: aurora-drift 38s var(--ease-in-out-quint) infinite alternate-reverse;
+  --animate-sheen: sheen 7s linear infinite;
+  --animate-rise: rise 0.24s var(--ease-out-soft) both;
+  --animate-fade: fade 0.18s var(--ease-out-soft) both;
+  --animate-pop: pop 0.18s var(--ease-spring) both;
+  --animate-breathe: breathe 3.4s ease-in-out infinite;
+
+  @keyframes aurora-drift {
+    0% {
+      transform: translate3d(-2%, -1%, 0) scale(1);
+    }
+    50% {
+      transform: translate3d(2%, 1.5%, 0) scale(1.06);
+    }
+    100% {
+      transform: translate3d(-1%, 2%, 0) scale(1.02);
+    }
+  }
+  @keyframes sheen {
+    0% {
+      transform: translateX(-120%);
+    }
+    100% {
+      transform: translateX(220%);
+    }
+  }
+  @keyframes rise {
+    from {
+      opacity: 0;
+      transform: translateY(8px) scale(0.985);
+    }
+    to {
+      opacity: 1;
+      transform: none;
+    }
+  }
+  @keyframes fade {
+    from {
+      opacity: 0;
+    }
+    to {
+      opacity: 1;
+    }
+  }
+  @keyframes pop {
+    from {
+      opacity: 0;
+      transform: scale(0.94);
+    }
+    to {
+      opacity: 1;
+      transform: none;
+    }
+  }
+  @keyframes breathe {
+    0%,
+    100% {
+      opacity: 0.55;
+    }
+    50% {
+      opacity: 1;
+    }
+  }
+}
+
+/* =========================================================================
+   BASE
+   ========================================================================= */
+@layer base {
+  :root {
+    color-scheme: dark;
+    /* Composed glass recipes — referenced by the primitives below. */
+    --glass-1-bg: rgb(255 255 255 / 0.045);
+    --glass-2-bg: rgb(20 17 36 / 0.56);
+    --glass-3-bg: rgb(16 14 30 / 0.76);
+    --glass-solid-bg: rgb(23 20 40 / 0.94); /* high-alpha: guarantees AA text contrast */
+    --glass-line: rgb(255 255 255 / 0.1);
+    --glass-line-soft: rgb(255 255 255 / 0.06);
+    --glass-blur: 20px;
+    --glass-saturate: 150%;
+  }
+
+  * {
+    min-width: 0;
+  }
+
+  html,
+  body,
+  #root {
+    height: 100%;
+  }
+
+  body {
+    margin: 0;
+    background-color: var(--color-void);
+    color: var(--color-fg);
+    font-family: var(--font-sans);
+    font-synthesis-weight: none;
+    text-rendering: optimizeLegibility;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    overflow: hidden; /* app shell, not a scrolling document */
+  }
+
+  button,
+  input,
+  select {
+    font: inherit;
+    color: inherit;
+  }
+
+  /* Crisp, on-brand focus ring for every keyboard-reachable control. */
+  :focus-visible {
+    outline: 2px solid var(--color-aurora-cyan);
+    outline-offset: 2px;
+    border-radius: var(--radius-xs);
+  }
+
+  ::selection {
+    background: color-mix(in oklab, var(--color-aurora-violet) 45%, transparent);
+    color: var(--color-fg);
+  }
+}
+/* =========================================================================
+   COMPONENT PRIMITIVES
+   Native cascade layers keep Tailwind utilities (a later layer) able to
+   override these without !important.
+   ========================================================================= */
+@layer components {
+  /* ---- Glass surfaces: elevation tiers -----------------------------------
+     .glass   tier 1 - flat translucent chip (cheapest blur cost)
+     .glass-2 tier 2 - floating panel
+     .glass-3 tier 3 - modal / maximum separation
+     .glass-solid - high-alpha surface reserved for long-form text (contrast safety)
+     ---------------------------------------------------------------------- */
+  .glass {
+    background: var(--glass-1-bg);
+    border: 1px solid var(--glass-line);
+    backdrop-filter: blur(10px) saturate(130%);
+    -webkit-backdrop-filter: blur(10px) saturate(130%);
+  }
+
+  .glass-2 {
+    background: var(--glass-2-bg);
+    border: 1px solid var(--glass-line);
+    backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
+    -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
+    box-shadow: var(--shadow-glass);
+  }
+
+  .glass-3 {
+    background: var(--glass-3-bg);
+    border: 1px solid var(--glass-line-strong);
+    backdrop-filter: blur(28px) saturate(160%);
+    -webkit-backdrop-filter: blur(28px) saturate(160%);
+    box-shadow: var(--shadow-float);
+  }
+
+  .glass-solid {
+    background: var(--glass-solid-bg);
+    border: 1px solid var(--glass-line);
+    box-shadow: var(--shadow-glass);
+  }
+
+  /* Subtle top-edge specular highlight — the signature "lit glass" cue. */
+  .glass-specular {
+    position: relative;
+  }
+  .glass-specular::before {
+    content: '';
+    position: absolute;
+    inset: 0 0 auto 0;
+    height: 1px;
+    background: linear-gradient(
+      90deg,
+      transparent,
+      rgb(255 255 255 / 0.34) 22%,
+      rgb(255 255 255 / 0.34) 78%,
+      transparent
+    );
+    pointer-events: none;
+  }
+
+  .well {
+    background: rgb(0 0 0 / 0.3);
+    border: 1px solid var(--glass-line-soft);
+    box-shadow: var(--shadow-inset-well);
+  }
+
+  .aurora-text {
+    background: linear-gradient(
+      104deg,
+      var(--color-aurora-cyan) 0%,
+      var(--color-aurora-violet) 46%,
+      var(--color-aurora-magenta) 100%
+    );
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+
+  .hairline-t {
+    border-top: 1px solid var(--glass-line-soft);
+  }
+  .hairline-b {
+    border-bottom: 1px solid var(--glass-line-soft);
+  }
+  .hairline-r {
+    border-right: 1px solid var(--glass-line-soft);
+  }
+  .hairline-l {
+    border-left: 1px solid var(--glass-line-soft);
+  }
+
+  /* ---- Slim scrollbars so panels stay elegant ---- */
+  .scroll-slim {
+    scrollbar-width: thin;
+    scrollbar-color: rgb(255 255 255 / 0.16) transparent;
+  }
+  .scroll-slim::-webkit-scrollbar {
+    width: 9px;
+    height: 9px;
+  }
+  .scroll-slim::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  .scroll-slim::-webkit-scrollbar-thumb {
+    background: rgb(255 255 255 / 0.14);
+    border-radius: 99px;
+    border: 2px solid transparent;
+    background-clip: content-box;
+  }
+  .scroll-slim::-webkit-scrollbar-thumb:hover {
+    background: rgb(255 255 255 / 0.26);
+    background-clip: content-box;
+  }
+
+  /* ---- Transparency checkerboard shown behind the artboard ---- */
+  .checkerboard {
+    background-color: #2a2740;
+    background-image:
+      linear-gradient(45deg, rgb(255 255 255 / 0.055) 25%, transparent 25%),
+      linear-gradient(-45deg, rgb(255 255 255 / 0.055) 25%, transparent 25%),
+      linear-gradient(45deg, transparent 75%, rgb(255 255 255 / 0.055) 75%),
+      linear-gradient(-45deg, transparent 75%, rgb(255 255 255 / 0.055) 75%);
+    background-size: 16px 16px;
+    background-position:
+      0 0,
+      0 8px,
+      8px -8px,
+      -8px 0px;
+  }
+}
+
+/* =========================================================================
+   REDUCED MOTION — the shell must remain fully usable with zero motion.
+   ========================================================================= */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
+}

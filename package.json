@@ -1,0 +1,27 @@
+{
+  "name": "aurora-paint",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Aurora Paint - a premium glassmorphism creative studio app built on the HTML5 Canvas API.",
+  "scripts": {
+    "dev": "vite",
+    "check": "node scripts/check-imports.mjs",
+    "engine": "node scripts/engine-smoke.mjs",
+    "engine-dom": "node scripts/engine-dom-smoke.mjs",
+    "test": "npm run check && npm run engine && npm run engine-dom && npm run smoke",
+    "smoke": "vite build --ssr scripts/ssr-smoke.jsx --outDir .smoke && node .smoke/ssr-smoke.js",
+    "build": "npm run check && vite build",
+    "preview": "vite preview --port 4173"
+  },
+  "dependencies": {
+    "react": "^19.3.0",
+    "react-dom": "^19.3.0"
+  },
+  "devDependencies": {
+    "@tailwindcss/vite": "^4.3.3",
+    "@vitejs/plugin-react": "^6.1.1",
+    "tailwindcss": "^4.3.3",
+    "vite": "^8.3.2"
+  }
+}
