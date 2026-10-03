@@ -3,6 +3,15 @@ import { UiContext } from './context.js'
 import { createEditor } from '../../engine/core/EditorController.js'
 import { EVENTS } from '../../engine/core/constants.js'
 import { DEFAULT_TOOL, TOOLS } from '../data/tools.js'
+import useFilePicker from '../hooks/useFilePicker.js'
+import {
+  downloadBlob,
+  exportFilename,
+  isImportableFile,
+  readFileAsText,
+  sanitizeFilename,
+} from '../../engine/io/codec.js'
+import { PROJECT_EXTENSION } from '../../engine/io/project.js'
 import {
   DEFAULT_DOC,
   DEFAULT_OPTIONS,
@@ -18,6 +27,17 @@ const createEngine = (doc) => createEditor({ width: doc.width, height: doc.heigh
 
 /** Tools that paint, so the overlay can show a brush-sized cursor ring. */
 const PAINT_TOOLS = new Set(['brush', 'pencil', 'eraser'])
+
+/**
+ * Route a dropped or picked file to the right operation.
+ *
+ * `.aurora` files reopen the layered document; everything else is an image.
+ * Drag-and-drop and the Open dialog must agree, so the decision lives here
+ * rather than being re-implemented at each call site.
+ */
+export function isProjectFile(file) {
+  return Boolean(file) && /\.aurora$/i.test(file.name ?? '')
+}
 
 /**
  * Holds every piece of *interface* state for the studio.
@@ -65,6 +85,7 @@ export default function UiProvider({ children }) {
     shortcuts: false,
     newDoc: false,
     color: false,
+    export: false,
   })
   const [toasts, setToasts] = useState([])
 
@@ -336,6 +357,140 @@ export default function UiProvider({ children }) {
     [engine],
   )
 
+  /* ----------------------------------------------------------------- files */
+
+  /* ---- file operations live here: they need the engine, a toast, and to know
+         whether the change is worth a "you will lose work" warning. ---- */
+
+  const [isDirty, setDirty] = useState(false)
+  const [lastSavedAt, setLastSavedAt] = useState(null)
+
+  // Any recorded history entry means the document moved away from what was
+  // saved. Cheap, and it covers painting, layering and structural edits alike.
+  useEffect(() => {
+    if (historyState.entries.length > 0) setDirty(true)
+  }, [historyState.entries.length])
+
+  /**
+   * Run a file operation, turning any thrown Error into a readable toast.
+   *
+   * Every browser file API can fail for reasons the user cannot see (a decode
+   * error, a revoked permission), and an unhandled rejection here would look
+   * like the app silently doing nothing.
+   */
+  const runFileOp = useCallback(
+    async (operation, { success, failure = 'That did not work' }) => {
+      try {
+        const result = await operation()
+        if (success) pushToast({ title: success, tone: 'success' })
+        return result
+      } catch (error) {
+        pushToast({
+          title: failure,
+          message: error?.message ?? 'Something went wrong.',
+          tone: 'warning',
+          duration: 5000,
+        })
+        return null
+      }
+    },
+    [pushToast],
+  )
+
+  /** Import an image on top of the current artwork as a new layer. */
+  const importImageFile = useCallback(
+    (file) =>
+      runFileOp(() => engine.importImageFile(file), {
+        success: `Imported ${file?.name ?? 'image'}`,
+        failure: 'That image could not be imported',
+      }),
+    [engine, runFileOp],
+  )
+
+  /** Open an image as a whole new document, replacing what is on screen. */
+  const openImageFile = useCallback(
+    (file) =>
+      runFileOp(() => engine.openImageFile(file), {
+        success: `Opened ${file?.name ?? 'image'}`,
+        failure: 'That image could not be opened',
+      }),
+    [engine, runFileOp],
+  )
+
+  /** Save the layered document as a `.aurora` project file. */
+  const saveProject = useCallback(
+    () =>
+      runFileOp(async () => {
+        const project = engine.snapshotProject()
+        const blob = new Blob([JSON.stringify(project)], {
+          type: 'application/json',
+        })
+        downloadBlob(blob, `${sanitizeFilename(engine.document.name)}.${PROJECT_EXTENSION}`)
+        setDirty(false)
+        setLastSavedAt(Date.now())
+        return project
+      }, {
+        success: 'Project saved',
+        failure: 'The project could not be saved',
+      }),
+    [engine, runFileOp],
+  )
+
+  /** Load a `.aurora` project, replacing the current document. */
+  const openProjectFile = useCallback(
+    (file) =>
+      runFileOp(async () => {
+        const text = await readFileAsText(file)
+        await engine.loadProject(text)
+        setDirty(false)
+        setLastSavedAt(Date.now())
+        return true
+      }, {
+        success: `Opened ${file?.name ?? 'project'}`,
+        failure: 'That project could not be opened',
+      }),
+    [engine, runFileOp],
+  )
+
+  /**
+   * Route a file to the right operation.
+   *
+   * `.aurora` files reopen the layered project; anything else opens as an
+   * image document. Drag-and-drop, the Open button and the Ctrl+O shortcut all
+   * funnel through here so the three can never disagree about a file type.
+   */
+  const openFile = useCallback(
+    (file) => {
+      if (!file) return
+      if (isProjectFile(file)) openProjectFile(file)
+      else if (isImportableFile(file)) openImageFile(file)
+      else pushToast({ title: 'That file type cannot be opened', tone: 'warning' })
+    },
+    [openProjectFile, openImageFile, pushToast],
+  )
+
+  // One hidden input for the whole app: the Open button, the command palette
+  // and the keyboard shortcut all trigger this same element.
+  const { open: openFilePicker, inputProps } = useFilePicker(openFile)
+
+  /**
+   * Encode the flattened document and hand it to the browser.
+   *
+   * @param {object} [options] format / quality / scale / transparent
+   */
+  const exportImageFile = useCallback(
+    (options = {}) =>
+      runFileOp(async () => {
+        const { blob, filename } = await engine.exportImage(options)
+        downloadBlob(blob, filename)
+        return filename
+      }, {
+        success: `Exported ${exportFilename(engine.document.name, options)}`,
+        failure: 'The image could not be exported',
+      }),
+    [engine, runFileOp],
+  )
+
   /* ------------------------------------------------------------------ chrome */
   const togglePanel = useCallback((name) => {
     setPanels((prev) => ({ ...prev, [name]: !prev[name] }))
@@ -351,8 +506,8 @@ export default function UiProvider({ children }) {
 
   const closeAllDialogs = useCallback(() => {
     setDialogs((prev) =>
-      prev.palette || prev.shortcuts || prev.newDoc || prev.color
-        ? { palette: false, shortcuts: false, newDoc: false, color: false }
+      Object.values(prev).some(Boolean)
+        ? { palette: false, shortcuts: false, newDoc: false, color: false, export: false }
         : prev,
     )
   }, [])
@@ -403,6 +558,16 @@ export default function UiProvider({ children }) {
       deleteLayer,
       renameLayer,
       moveLayer,
+      /* files */
+      isDirty,
+      lastSavedAt,
+      openFile,
+      openFilePicker,
+      importImageFile,
+      openImageFile,
+      openProjectFile,
+      saveProject,
+      exportImageFile,
       /* chrome */
       panels,
       togglePanel,
@@ -440,6 +605,9 @@ export default function UiProvider({ children }) {
       doc, engine, setDoc, zoom, setZoom, zoomIn, zoomOut, zoomTo, fitScale, fitToScreen,
       layers, activeLayerId, selectLayer, toggleLayerVisibility, toggleLayerLock,
       setLayerOpacity, setLayerBlend, addLayer, duplicateLayer, deleteLayer, renameLayer, moveLayer,
+      isDirty, lastSavedAt,
+      openFile, openFilePicker,
+      importImageFile, openImageFile, openProjectFile, saveProject, exportImageFile,
       panels, togglePanel, dialogs, openDialog, closeDialog, closeAllDialogs, anyDialogOpen,
       toasts, pushToast, dismissToast,
       historyState, selectionState, undo, redo, jumpHistory,
@@ -447,5 +615,15 @@ export default function UiProvider({ children }) {
     ],
   )
 
-  return <UiContext.Provider value={value}>{children}</UiContext.Provider>
+  return (
+    <>
+      <UiContext.Provider value={value}>{children}</UiContext.Provider>
+
+      {/* The app's single file input, rendered beside the provider rather than
+          inside any panel: the top bar, the command palette and the keyboard
+          shortcut all reach it through `openFilePicker`, so there is exactly
+          one `accept`, one reset rule and one place to reason about files. */}
+      <input {...inputProps} aria-label="Open a file" tabIndex={-1} />
+    </>
+  )
 }

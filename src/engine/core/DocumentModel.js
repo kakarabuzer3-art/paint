@@ -67,6 +67,27 @@ export default class DocumentModel {
   }
 
   /**
+   * Replace the whole stack with a single blank layer.
+   *
+   * Used by File ▸ New and by opening an image as a document — both are hard
+   * resets, so the old layers are disposed rather than kept alive. Callers are
+   * responsible for clearing history, since nothing here is undoable.
+   */
+  resetLayers(options = {}) {
+    for (const layer of this.layers) layer.dispose()
+    this.layers.length = 0
+    this.activeLayerId = null
+
+    const layer = new Layer({ width: this.width, height: this.height, ...options })
+    if (!options.fill && options.transparent !== true) layer.fillAll(this.paper)
+    this.layers.push(layer)
+    this.activeLayerId = layer.id
+
+    this.#changed()
+    return layer
+  }
+
+  /**
    * @param {string} id
    * @param {{ force?: boolean }} [options] force allows removing the last layer
    *   (history undo of an "add layer" must be able to empty the stack).

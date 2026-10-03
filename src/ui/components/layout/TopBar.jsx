@@ -1,4 +1,3 @@
-import { useCallback } from 'react'
 import { cn } from '../../../lib/cn.js'
 import Icon from '../../icons/Icon.jsx'
 import IconButton from '../common/IconButton.jsx'
@@ -27,28 +26,20 @@ export default function TopBar() {
     panels,
     togglePanel,
     openDialog,
-    pushToast,
     canUndo,
     canRedo,
     undo,
     redo,
     historyEntries,
+    isDirty,
+    saveProject,
+    openFilePicker,
   } = useUi()
 
   // Naming the action in the tooltip is recognition over recall — you always
   // know what Ctrl+Z is about to reverse.
   const lastUndoLabel = historyEntries.at(-1)?.label ?? ''
   const lastRedoLabel = historyEntries.at(-1)?.label ?? ''
-
-  const notYet = useCallback(
-    (feature) =>
-      pushToast({
-        title: `${feature} arrives later`,
-        message: 'The canvas engine lands in Phase 2; file handling in Phase 6.',
-        tone: 'info',
-      }),
-    [pushToast],
-  )
 
   return (
     <header className="glass-2 glass-specular relative flex h-12 shrink-0 items-center gap-2 overflow-hidden rounded-[var(--radius-panel)] px-2.5">
@@ -102,12 +93,40 @@ export default function TopBar() {
         <Button icon="newFile" size="sm" variant="ghost" onClick={() => openDialog('newDoc')}>
           <span className="hidden sm:inline">New</span>
         </Button>
-        <Button icon="folder" size="sm" variant="ghost" onClick={() => notYet('Image import')}>
-          <span className="hidden sm:inline">Open</span>
-        </Button>
-        <Button icon="download" size="sm" variant="ghost" onClick={() => notYet('Export')}>
-          <span className="hidden sm:inline">Export</span>
-        </Button>
+
+        <Tooltip label="Open an image or .aurora project" shortcut={`${MOD}+O`}>
+          <span>
+            <Button icon="folder" size="sm" variant="ghost" onClick={openFilePicker}>
+              <span className="hidden sm:inline">Open</span>
+            </Button>
+          </span>
+        </Tooltip>
+
+        <Tooltip
+          label={isDirty ? 'Save project (unsaved changes)' : 'Save project'}
+          shortcut={`${MOD}+S`}
+        >
+          <span>
+            <Button icon="save" size="sm" variant="ghost" onClick={saveProject}>
+              <span className="hidden sm:inline">Save</span>
+              {/* An unsaved-changes dot: the cheapest possible save affordance. */}
+              {isDirty && (
+                <span
+                  className="ml-1 h-1.5 w-1.5 rounded-full bg-aurora-cyan"
+                  aria-label="Unsaved changes"
+                />
+              )}
+            </Button>
+          </span>
+        </Tooltip>
+
+        <Tooltip label="Export the flattened artwork" shortcut={`${MOD}+E`}>
+          <span>
+            <Button icon="download" size="sm" variant="ghost" onClick={() => openDialog('export')}>
+              <span className="hidden sm:inline">Export</span>
+            </Button>
+          </span>
+        </Tooltip>
       </div>
 
       <span className="mx-0.5 h-6 w-px shrink-0 bg-white/10" />

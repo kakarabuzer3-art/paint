@@ -1,4 +1,5 @@
 import { useEffect, useRef } from 'react'
+import { cn } from '../../../lib/cn.js'
 import Icon from '../../icons/Icon.jsx'
 import { TOOLS } from '../../data/tools.js'
 import { useUi } from '../../state/context.js'
@@ -13,7 +14,8 @@ import { useUi } from '../../state/context.js'
  * every mousemove, which is the classic canvas-app performance mistake.
  */
 export default function StatusBar() {
-  const { activeTool, doc, zoom, layers, activeLayerId, cursorRef, panels, selection } = useUi()
+  const { activeTool, doc, zoom, layers, activeLayerId, cursorRef, panels, selection, isDirty } =
+    useUi()
   const xRef = useRef(null)
   const yRef = useRef(null)
 
@@ -91,9 +93,17 @@ export default function StatusBar() {
         {Math.round(zoom * 100)}%
       </span>
 
+      {/* Honest save state: a lying indicator is worse than none. Real
+          autosave/recovery arrives with the Phase 7 productivity pass. */}
       <span className="hidden items-center gap-1.5 md:flex">
-        <span className="h-1.5 w-1.5 rounded-full bg-aurora-teal/80" aria-hidden="true" />
-        Autosave ready
+        <span
+          className={cn(
+            'h-1.5 w-1.5 rounded-full',
+            isDirty ? 'bg-aurora-cyan' : 'bg-aurora-teal/80',
+          )}
+          aria-hidden="true"
+        />
+        {isDirty ? 'Unsaved changes' : 'No unsaved changes'}
       </span>
     </footer>
   )

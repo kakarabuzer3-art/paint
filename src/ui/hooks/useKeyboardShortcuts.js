@@ -97,11 +97,17 @@ export default function useKeyboardShortcuts() {
 
           case 's':
             event.preventDefault()
-            ui.pushToast({
-              title: 'Saving arrives in Phase 6',
-              message: 'Autosave and export land with the file layer.',
-              tone: 'info',
-            })
+            ui.saveProject()
+            break
+
+          case 'e':
+            event.preventDefault()
+            ui.openDialog('export')
+            break
+
+          case 'o':
+            event.preventDefault()
+            ui.openFilePicker()
             break
 
           case 'z':

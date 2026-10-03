@@ -16,6 +16,8 @@ import process from 'node:process'
 
 import { createEditor } from '../src/engine/core/EditorController.js'
 import { EVENTS } from '../src/engine/core/constants.js'
+import { exportFilename, isImportableFile, sanitizeFilename } from '../src/engine/io/codec.js'
+import { PROJECT_VERSION, parseProject, serializeProject } from '../src/engine/io/project.js'
 
 let passed = 0
 const failures = []
@@ -198,7 +200,16 @@ globalThis.Path2D = class Path2D {
 
 function makeCanvasElement() {
   const ctx = makeContext()
-  return { width: 0, height: 0, style: {}, getContext: () => ctx, __ctx: ctx }
+  return {
+    width: 0,
+    height: 0,
+    style: {},
+    getContext: () => ctx,
+    // Enough for the project format to serialise; a real decode is not needed
+    // to prove the metadata survives the round trip.
+    toDataURL: () => 'data:image/png;base64,iVBORw0KGgo=',
+    __ctx: ctx,
+  }
 }
 
 /** Deterministic rAF: callbacks are queued and flushed manually. */
@@ -280,6 +291,10 @@ globalThis.OffscreenCanvas = class {
 
   getContext() {
     return this.__ctx
+  }
+
+  toDataURL() {
+    return 'data:image/png;base64,iVBORw0KGgo='
   }
 }
 
@@ -1074,6 +1089,158 @@ check('multi-line text grows downwards by the leading', () => {
   // 20px type at 150% leading: cap height plus two 30px gaps = 80.
   assert.ok(rect.height >= 80, `bounds cover every line (got ${rect.height})`)
   assert.ok(rect.height <= 90, 'and are not wildly oversized')
+})
+
+/* ------------------------------------------------------------------ files */
+
+console.log('\nFiles')
+
+check('export filenames carry the format and scale', () => {
+  assert.equal(exportFilename('my art', { format: 'png' }), 'my art.png')
+  assert.equal(exportFilename('my art', { format: 'jpeg' }), 'my art.jpg')
+  assert.equal(exportFilename('my art', { format: 'webp' }), 'my art.webp')
+  assert.equal(exportFilename('my art', { format: 'png', scale: 2 }), 'my art@2x.png')
+
+  // Reserved characters would be silently dropped or renamed by the browser.
+  assert.equal(sanitizeFilename('a/b:c*d?e"f<g>h|i'), 'a-b-c-d-e-f-g-h-i')
+  assert.equal(sanitizeFilename('   '), 'artwork', 'blank names fall back')
+  assert.equal(sanitizeFilename(''), 'artwork')
+})
+
+check('only image types are treated as importable', () => {
+  assert.equal(isImportableFile({ type: 'image/png', name: 'a.png' }), true)
+  assert.equal(isImportableFile({ type: 'image/webp', name: 'a.webp' }), true)
+  assert.equal(isImportableFile({ type: 'text/plain', name: 'a.txt' }), false)
+  // Some drag sources report no MIME type at all.
+  assert.equal(isImportableFile({ type: '', name: 'photo.JPG' }), true)
+  assert.equal(isImportableFile({ type: '', name: 'notes.txt' }), false)
+  assert.equal(isImportableFile(null), false)
+})
+
+check('the export canvas is sized by scale and skips the paper when transparent', () => {
+  const { engine } = makeEngine({ width: 40, height: 20 })
+  engine.document.paintableLayer().fillAll('#ff0000')
+
+  const oneToOne = engine.renderExportCanvas()
+  assert.equal(oneToOne.width, 40)
+  assert.equal(oneToOne.height, 20)
+  assert.ok(oneToOne.__ctx.calls.some(([name]) => name === 'fillRect'), 'paper was painted')
+
+  const doubled = engine.renderExportCanvas({ scale: 2 })
+  assert.equal(doubled.width, 80, '2x export doubles the width')
+  assert.equal(doubled.height, 40, 'and the height')
+
+  const clear = engine.renderExportCanvas({ transparent: true })
+  const names = clear.__ctx.calls.map(([name]) => name)
+  assert.equal(
+    names.includes('fillRect'),
+    false,
+    'a transparent export must not paint the paper colour',
+  )
+})
+
+check('an imported image becomes an undoable top layer', () => {
+  const { engine } = makeEngine({ width: 100, height: 100 })
+  const before = engine.document.layers.length
+
+  const layer = engine.importImage(
+    { source: makeCanvasElement(), width: 40, height: 20 },
+    { name: 'Photo' },
+  )
+
+  assert.equal(engine.document.layers.length, before + 1)
+  assert.equal(engine.document.layers[0].id, layer.id, 'the import lands on top')
+  assert.equal(layer.name, 'Photo')
+  assert.equal(layer.width, 100, 'the layer still matches the document')
+
+  engine.undo()
+  assert.equal(engine.document.layers.length, before, 'undo removes the import')
+})
+
+check('an oversized image is scaled to fit rather than clipped', () => {
+  const { engine } = makeEngine({ width: 50, height: 50 })
+
+  const layer = engine.importImage(
+    { source: makeCanvasElement(), width: 200, height: 100 },
+    { name: 'Big' },
+  )
+
+  // 200x100 fitted into 50x50 -> scale 0.25 -> 50x25.
+  // The fake records ['drawImage', source, x, y, width, height].
+  const blit = layer
+    .ensureCanvas()
+    .__ctx.calls.find(([name]) => name === 'drawImage')
+  assert.ok(blit, 'the image was drawn')
+  assert.equal(blit[4], 50, 'scaled down to the document width')
+  assert.equal(blit[5], 25, 'and drawn at the fitted height')
+  assert.equal(blit[3], 13, 'centred vertically in the 50px document')
+})
+
+check('a project round-trips through serialise and parse', () => {
+  const { engine } = makeEngine({ width: 30, height: 30 })
+  const layer = engine.document.paintableLayer()
+  layer.ensureCanvas().__ctx.__setPixels(30, 30, [4, 5, 6, 255])
+  engine.setLayerPropsCommand(layer.id, { name: 'Artwork', opacity: 55 })
+
+  const project = serializeProject(engine.document)
+  assert.equal(project.format, 'aurora-paint')
+  assert.equal(project.version, PROJECT_VERSION)
+  assert.equal(project.width, 30)
+  assert.equal(project.layers.length, engine.document.layers.length)
+  assert.equal(project.layers.find((entry) => entry.name === 'Artwork').opacity, 55)
+
+  const parsed = parseProject(project)
+  assert.equal(parsed.name, project.name)
+  assert.equal(parsed.layers.length, project.layers.length)
+  assert.equal(parsed.layers.find((entry) => entry.name === 'Artwork').opacity, 55)
+})
+
+check('a corrupt or foreign project fails with a readable message', () => {
+  assert.throws(() => parseProject('{not json'), /not valid JSON/i)
+  assert.throws(() => parseProject(null), /not an Aurora project/i)
+  assert.throws(() => parseProject([]), /not an Aurora project/i)
+  assert.throws(
+    () => parseProject({ format: 'something-else', version: 1, layers: [{}] }),
+    /not created by Aurora Paint/i,
+  )
+  assert.throws(
+    () => parseProject({ format: 'aurora-paint', version: 99, layers: [{}] }),
+    /newer version/i,
+  )
+  assert.throws(
+    () => parseProject({ format: 'aurora-paint', version: 1, layers: [] }),
+    /no layers/i,
+  )
+})
+
+check('project dimensions are clamped, never trusted', () => {
+  const parsed = parseProject({
+    format: 'aurora-paint',
+    version: 1,
+    width: 999999,
+    height: -50,
+    layers: [{ name: 'A' }],
+  })
+
+  assert.ok(parsed.width <= 8192, 'an oversized width is clamped')
+  assert.ok(parsed.height >= 1, 'a negative height is clamped up')
+  assert.equal(parsed.layers[0].name, 'A')
+})
+
+check('opening an image as a document resizes and resets the stack', () => {
+  const { engine } = makeEngine({ width: 40, height: 40 })
+
+  engine.openImageAsDocument(
+    { source: makeCanvasElement(), width: 64, height: 32 },
+    { name: 'Opened' },
+  )
+
+  assert.equal(engine.document.width, 64, 'the image size became the document size')
+  assert.equal(engine.document.height, 32)
+  assert.equal(engine.document.name, 'Opened')
+  assert.equal(engine.document.layers.length, 1, 'a single layer holds the image')
+  assert.equal(engine.document.activeLayerId, engine.document.layers[0].id)
+  assert.equal(engine.history.entries().length, 0, 'the old document is not undoable')
 })
 
 /* --------------------------------------------------------------- result */

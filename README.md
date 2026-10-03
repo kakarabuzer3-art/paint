@@ -28,7 +28,7 @@ npm run build     # check + production build
 | 3 | Core drawing tools | done |
 | 4 | Selection + transform + undo/redo | done |
 | 5 | Layers + Text | done |
-| 6 | Import/export + file features | pending |
+| 6 | Import/export + file features | done |
 | 7 | Smart productivity features | pending |
 | 8 | Visual polish + performance + accessibility | pending |
 | 9 | Final testing + competition demo polish | pending |
@@ -48,6 +48,9 @@ npm run build     # check + production build
    `document.toJSON()` on that channel: the panel calls `.find()` on it, so an
    object payload white-screens the app. Structure changes already publish
    through `DocumentModel.onStructureChange`.
+5. **`src/engine/io/**` never touches the DOM at module scope.** Encoding and
+   decoding call `document`/`URL` lazily inside functions, so the engine still
+   imports cleanly in Node for the unit and SSR tests.
 
 ## Layout
 
@@ -59,6 +62,8 @@ src/
                EventBus, pixelCanvas, constants
     render/    Compositor, ScratchRenderer, OverlayRenderer, CanvasFactory,
                dirtyRect, floodFill, handles
+    io/        codec (PNG/JPEG/WebP encode + decode), project (the `.aurora`
+               save format: JSON + per-layer lossless PNG data URLs)
     brush/     BrushEngine — cached brush tips + spacing/smoothing sampler
     history/   Command, HistoryStack, commands (pixel patches + structure)
     selection/ SelectionManager (Uint8Array mask + bounds), ops (extract/clear/stamp)
@@ -70,7 +75,7 @@ src/
   ui/
     state/    UiProvider + context (interface state only; engine is exposed, not copied)
     data/     tool registry, defaults, shortcuts  (single source of truth)
-    hooks/    fuzzy matcher, keyboard router
+    hooks/    fuzzy matcher, keyboard router, file drop, file picker
     components/
       common/     Button, IconButton, Tooltip, Slider, Modal, Toaster…
       layout/     AppShell, TopBar, LeftToolRail, OptionsBar, Inspector, StatusBar
@@ -78,7 +83,7 @@ src/
       color/      ColorPicker + ColorPanel
       layers/     LayerPanel
       palette/    CommandPalette + command registry
-      dialogs/    New document, shortcuts, colour
+      dialogs/    New document, shortcuts, colour, export
 scripts/      check-imports.mjs, engine-smoke.mjs, engine-dom-smoke.mjs, ssr-smoke.jsx
 ```
 

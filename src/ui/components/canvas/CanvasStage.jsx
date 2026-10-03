@@ -2,6 +2,7 @@ import { useEffect, useLayoutEffect, useRef } from 'react'
 import { cn } from '../../../lib/cn.js'
 import Icon from '../../icons/Icon.jsx'
 import { EVENTS } from '../../../engine/core/constants.js'
+import useFileDrop from '../../hooks/useFileDrop.js'
 import { useUi } from '../../state/context.js'
 
 const CURSOR_BY_TOOL = {
@@ -94,6 +95,9 @@ export default function CanvasStage() {
     engine?.setCursor(CURSOR_BY_TOOL[activeTool] ?? 'default')
   }, [engine, activeTool])
 
+  // Window-level, so dropping anywhere in the app works — see useFileDrop.
+  const { isDragging } = useFileDrop()
+
   return (
     <div
       ref={containerRef}
@@ -139,6 +143,24 @@ export default function CanvasStage() {
       <HintChip>
         Wheel to zoom · Space or middle-drag to pan · B/P/E/G for brush, pencil, eraser, fill
       </HintChip>
+
+      {/* Drop target. Rendered only while a file is over the window so it
+          costs nothing during normal painting. */}
+      {isDragging && (
+        <div
+          className="pointer-events-none absolute inset-0 z-20 grid place-items-center bg-aurora-violet/12 backdrop-blur-[3px]"
+          aria-hidden="true"
+        >
+          <div className="glass-solid flex flex-col items-center gap-2 rounded-[18px] border border-dashed border-aurora-cyan/60 px-8 py-6 text-center">
+            <Icon name="image" size={26} className="text-aurora-cyan" />
+            <p className="text-[13px] font-semibold text-fg">Drop to open</p>
+            <p className="max-w-[24ch] text-[11px] text-fg-subtle">
+              An image becomes your document. An <span className="font-mono">.aurora</span> file
+              reopens the layered project.
+            </p>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

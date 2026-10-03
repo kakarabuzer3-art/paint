@@ -40,6 +40,13 @@ import TransformTool from '../tools/TransformTool.js'
 import PointerRouter from '../input/PointerRouter.js'
 import WheelRouter from '../input/WheelRouter.js'
 import { EVENTS } from './constants.js'
+import {
+  canvasToBlob,
+  decodeImageBlob,
+  exportFilename,
+  getFormat,
+} from '../io/codec.js'
+import { buildLayers, parseProject, serializeProject } from '../io/project.js'
 
 /** Factory so the UI layer can create an engine without importing the class. */
 export function createEditor(options) {
@@ -838,6 +845,176 @@ export default class EditorController {
     if (!layer) return
     layer.markDirty()
     this.#emit(EVENTS.LAYERS, this.layerSnapshot())
+  }
+
+  /* --------------------------------------------------------------- file I/O */
+
+  /**
+   * Flatten the visible stack into a detached canvas, ready for encoding.
+   *
+   * Deliberately *not* the on-screen composite surface: export must not depend
+   * on what happens to be painted right now, must not include the overlay, and
+   * has to work at 1× while the user happens to be zoomed to 8×.
+   *
+   * @param {{ scale?: number, transparent?: boolean }} [options]
+   */
+  renderExportCanvas({ scale = 1, transparent = false } = {}) {
+    const width = Math.max(1, Math.round(this.document.width * scale))
+    const height = Math.max(1, Math.round(this.document.height * scale))
+
+    const canvas = createPixelCanvas(width, height)
+    const ctx = canvas.getContext('2d')
+
+    if (!transparent) {
+      // Paper colour as the base, then the stack flattened on top.
+      ctx.fillStyle = this.document.paper
+      ctx.fillRect(0, 0, width, height)
+    }
+
+    // Composite at document resolution and scale *afterwards*: upscaling first
+    // would let blend modes sample neighbouring pixels and fringe the edges.
+    const flattened = createPixelCanvas(this.document.width, this.document.height)
+    new Compositor({ ctx: flattened.getContext('2d') }).render(this.document, { paper: false })
+    ctx.drawImage(flattened, 0, 0, width, height)
+
+    return canvas
+  }
+
+  /**
+   * Encode the flattened document.
+   *
+   * @param {{ format?: string, quality?: number, scale?: number, transparent?: boolean }} options
+   * @returns {Promise<{ blob: Blob, filename: string, format: object }>}
+   */
+  async exportImage({ format, quality, scale = 1, transparent = false } = {}) {
+    const spec = getFormat(format)
+
+    // JPEG has no alpha channel, so the paper is always kept there — otherwise
+    // every transparent pixel exports as black.
+    const useTransparency = spec.supportsAlpha ? transparent : false
+    const canvas = this.renderExportCanvas({ scale, transparent: useTransparency })
+    const blob = await canvasToBlob(canvas, { format, quality })
+
+    return {
+      blob,
+      format: spec,
+      filename: exportFilename(this.document.name, { format, scale }),
+    }
+  }
+
+  /**
+   * Place a decoded image on the canvas as a new layer.
+   *
+   * @param {{ source: CanvasImageSource, width: number, height: number }} image
+   * @param {{ name?: string, fit?: boolean }} [options] `fit` scales an oversized
+   *   image down to the document instead of clipping it at 100%.
+   */
+  importImage(image, { name = 'Image', fit = true } = {}) {
+    const scale = fit
+      ? Math.min(1, this.document.width / image.width, this.document.height / image.height)
+      : 1
+    const drawWidth = Math.max(1, Math.round(image.width * scale))
+    const drawHeight = Math.max(1, Math.round(image.height * scale))
+
+    const layer = new Layer({
+      name,
+      width: this.document.width,
+      height: this.document.height,
+      transparent: true,
+    })
+    layer.ensureCanvas().getContext('2d').drawImage(
+      image.source,
+      Math.round((this.document.width - drawWidth) / 2),
+      Math.round((this.document.height - drawHeight) / 2),
+      drawWidth,
+      drawHeight,
+    )
+
+    // Execute, then record — see addLayerCommand().
+    this.document.insertLayer(layer, 0)
+    this.history.push(new AddLayerCommand(this.document, layer, 0, 'Import image'))
+    this.document.selectLayer(layer.id)
+    this.invalidateComposite()
+    return layer
+  }
+
+  /** Decode a File/Blob and place it on the canvas as a new layer. */
+  async importImageFile(file, options = {}) {
+    const image = await decodeImageBlob(file)
+    const name = options.name ?? (file?.name ? file.name.replace(/\.[^.]+$/, '') : 'Image')
+    return this.importImage(image, { ...options, name })
+  }
+
+  /**
+   * Open an image *as the document* rather than as a layer.
+   *
+   * The image becomes the new document size and its sole layer. History is
+   * cleared because undoing back into the previous document would be nonsense.
+   */
+  async openImageAsDocument(image, { name = 'Untitled artwork' } = {}) {
+    const resized = this.document.resize(image.width, image.height)
+    this.document.name = name
+    if (resized) this.viewport.setDocumentSize(this.document.width, this.document.height)
+
+    const layer = this.document.resetLayers({ name: 'Background', transparent: true })
+    layer.ensureCanvas().getContext('2d').drawImage(image.source, 0, 0, image.width, image.height)
+    layer.markDirty()
+
+    if (this.surfaces) {
+      sizeDocumentSurface(this.surfaces.composite, this.document.width, this.document.height)
+      sizeDocumentSurface(this.surfaces.scratch, this.document.width, this.document.height)
+    }
+
+    this.history.clear()
+    this.invalidateAll()
+    this.#emit(EVENTS.DOCUMENT, this.document.toJSON())
+    return layer
+  }
+
+  /** Decode a File/Blob and open it as a new document. */
+  async openImageFile(file) {
+    const image = await decodeImageBlob(file)
+    const name = file?.name ? file.name.replace(/\.[^.]+$/, '') : 'Untitled artwork'
+    return this.openImageAsDocument(image, { name })
+  }
+
+  /** The document as a plain, serialisable object (the `.aurora` payload). */
+  snapshotProject() {
+    return serializeProject(this.document)
+  }
+
+  /**
+   * Replace the document from a parsed project.
+   *
+   * Every layer is decoded *before* the current document is touched, so a
+   * corrupt file leaves the user's work intact rather than half-replaced.
+   */
+  async loadProject(raw) {
+    const project = parseProject(raw)
+    const layers = await buildLayers(project)
+
+    // Nothing below this point can fail, so the swap itself is safe.
+    this.document.resize(project.width, project.height)
+    this.document.name = project.name
+    this.document.setPaper(project.paper)
+
+    for (const layer of this.document.layers) layer.dispose()
+    this.document.layers.length = 0
+    this.document.activeLayerId = null
+
+    for (const layer of layers) this.document.insertLayer(layer, this.document.layers.length)
+    this.document.selectLayer(layers[project.activeIndex]?.id ?? layers[0].id)
+
+    this.viewport.setDocumentSize(this.document.width, this.document.height)
+    if (this.surfaces) {
+      sizeDocumentSurface(this.surfaces.composite, this.document.width, this.document.height)
+      sizeDocumentSurface(this.surfaces.scratch, this.document.width, this.document.height)
+    }
+
+    this.history.clear()
+    this.invalidateAll()
+    this.#emit(EVENTS.DOCUMENT, this.document.toJSON())
+    return this.document
   }
 
   /** Composited pixels, document resolution (magic wand, import, export). */

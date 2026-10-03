@@ -26,7 +26,7 @@ const markers = [
   ['document name', 'Untitled artwork'],
   ['active tool', 'Brush'],
   ['tool options', 'Hardness'],
-  ['status bar', 'Autosave ready'],
+  ['save state', 'No unsaved changes'],
   ['inspector colour', 'Studio palette'],
   // Layers are supplied by the engine after attach, so SSR renders the
   // section shell rather than rows — assert the shell, not the data.

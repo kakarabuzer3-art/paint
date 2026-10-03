@@ -1,7 +1,7 @@
 import { TOOLS, TOOL_ORDER } from '../../data/tools.js'
 
 export const GROUP_ORDER = [
-  'Edit', 'Tools', 'Selection', 'View', 'Layers', 'Colour', 'Panels', 'Document', 'Help',
+  'File', 'Edit', 'Tools', 'Selection', 'View', 'Layers', 'Colour', 'Panels', 'Document', 'Help',
 ]
 
 const isMac =
@@ -39,6 +39,42 @@ export function buildCommands(ui) {
   }
 
   list.push(
+    {
+      id: 'file:new',
+      group: 'File',
+      label: 'New document',
+      icon: 'newFile',
+      kbd: `${mod}N`,
+      keywords: 'new blank document canvas create',
+      run: () => ui.openDialog('newDoc'),
+    },
+    {
+      id: 'file:open',
+      group: 'File',
+      label: 'Open an image or project',
+      icon: 'folder',
+      kbd: `${mod}O`,
+      keywords: 'open load import file image project aurora',
+      run: () => ui.openFilePicker(),
+    },
+    {
+      id: 'file:save',
+      group: 'File',
+      label: 'Save project',
+      icon: 'save',
+      kbd: `${mod}S`,
+      keywords: 'save write project file aurora disk',
+      run: () => ui.saveProject(),
+    },
+    {
+      id: 'file:export',
+      group: 'File',
+      label: 'Export image…',
+      icon: 'download',
+      kbd: `${mod}E`,
+      keywords: 'export download png jpeg jpg webp save image output',
+      run: () => ui.openDialog('export'),
+    },
     {
       id: 'view:fit',
       group: 'View',
