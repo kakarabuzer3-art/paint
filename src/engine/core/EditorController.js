@@ -135,6 +135,9 @@ export default class EditorController {
 
     this.history = new HistoryStack({ limit: 60, memoryBudget: 192 * 1024 * 1024 })
     this.history.onChange = (command) => {
+      // Undo/redo rewrites pixels outside the commit path, so the revision is
+      // bumped here as well — otherwise thumbnails go stale after a rewind.
+      if (command?.layerId) this.document.getLayer(command.layerId)?.markDirty()
       this.invalidateComposite(command?.rect ?? null)
       this.#emit(EVENTS.HISTORY, this.historySnapshot())
     }
@@ -499,6 +502,7 @@ export default class EditorController {
     this.history.push(
       new PixelPatchCommand(this.document, patch.layer, patch.rect, patch.before, after, label),
     )
+    this.#refreshLayerPanel(patch.layer)
     return patch
   }
 
@@ -506,6 +510,7 @@ export default class EditorController {
   abandonPixelPatch(patch) {
     patch.layer.context.putImageData(patch.before, patch.rect.x, patch.rect.y)
     this.invalidateComposite(patch.rect)
+    this.#refreshLayerPanel(patch.layer)
   }
 
   /**
@@ -573,6 +578,7 @@ export default class EditorController {
     }
 
     this.invalidateComposite(band)
+    this.#refreshLayerPanel(patch.layer)
   }
 
   /** Undo an in-flight gesture from the snapshot, recording nothing. */
@@ -588,6 +594,7 @@ export default class EditorController {
       band.y,
     )
     this.invalidateComposite(band)
+    this.#refreshLayerPanel(patch.layer)
   }
 
   /* -------------------------------------------------------------- structure */
@@ -604,7 +611,8 @@ export default class EditorController {
     this.document.insertLayer(layer, 0)
     this.history.push(new AddLayerCommand(this.document, layer, 0, label))
     this.document.selectLayer(layer.id)
-    this.#emit(EVENTS.LAYERS, this.document.toJSON())
+    // No explicit emit: insertLayer/selectLayer fire onStructureChange, which
+    // publishes the panel snapshot. Emitting here would ship the wrong shape.
     return layer
   }
 
@@ -619,7 +627,6 @@ export default class EditorController {
     this.history.push(new DeleteLayerCommand(this.document, layer, index, label))
 
     if (fallback) this.document.selectLayer(fallback.id)
-    this.#emit(EVENTS.LAYERS, this.document.toJSON())
     return true
   }
 
@@ -757,7 +764,6 @@ export default class EditorController {
       this.history.push(new AddLayerCommand(this.document, layer, 0, 'Paste'))
       this.document.selectLayer(layer.id)
       this.invalidateComposite(target)
-      this.#emit(EVENTS.LAYERS, this.document.toJSON())
       return true
     }
 
@@ -782,8 +788,56 @@ export default class EditorController {
       blendMode: layer.blendMode,
       index,
       meta: `${layer.width} × ${layer.height}`,
+      revision: layer.revision,
       isActive: layer.id === this.document.activeLayerId,
     }))
+  }
+
+  /**
+   * Blit a layer's pixels into a small target context, fitted and centred.
+   *
+   * The panel renders *real* thumbnails rather than colour-coded placeholders:
+   * people pick layers by eye, so the picture has to be the actual content.
+   * The UI owns the destination canvas, so this stays a pure blit — no
+   * allocation and no data URLs crossing the engine boundary.
+   *
+   * @returns {boolean} false when the layer no longer exists
+   */
+  drawLayerThumbnail(layerId, ctx, width, height) {
+    const layer = this.document.getLayer(layerId)
+    if (!layer || !ctx) return false
+
+    // Fit the whole layer inside the box, preserving aspect ratio.
+    const scale = Math.min(width / layer.width, height / layer.height)
+    const drawWidth = Math.max(1, Math.floor(layer.width * scale))
+    const drawHeight = Math.max(1, Math.floor(layer.height * scale))
+
+    ctx.clearRect(0, 0, width, height)
+    ctx.drawImage(
+      layer.ensureCanvas(),
+      0,
+      0,
+      layer.width,
+      layer.height,
+      Math.floor((width - drawWidth) / 2),
+      Math.floor((height - drawHeight) / 2),
+      drawWidth,
+      drawHeight,
+    )
+    return true
+  }
+
+  /**
+   * Publish a pixel change to the layer panel.
+   *
+   * Bumping the revision invalidates that layer's cached thumbnail; the LAYERS
+   * event is what makes the panel redraw it. Fired once per *gesture* on
+   * commit — never per frame, so a stroke cannot re-render React.
+   */
+  #refreshLayerPanel(layer) {
+    if (!layer) return
+    layer.markDirty()
+    this.#emit(EVENTS.LAYERS, this.layerSnapshot())
   }
 
   /** Composited pixels, document resolution (magic wand, import, export). */

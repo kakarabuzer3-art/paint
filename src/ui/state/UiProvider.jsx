@@ -7,7 +7,6 @@ import {
   DEFAULT_DOC,
   DEFAULT_OPTIONS,
   DEFAULT_PALETTE,
-  SEED_LAYERS,
   SEED_RECENT,
 } from '../data/defaults.js'
 
@@ -164,8 +163,10 @@ export default function UiProvider({ children }) {
     const offLayers = engine.on(EVENTS.LAYERS, setLayers)
 
     // Seed the mirrors from the engine's current state (e.g. after StrictMode
-    // remount) so the panel is never briefly wrong.
+    // remount) so the panel is never briefly wrong. Layers are engine-owned —
+    // subscribing without this would leave the panel empty until the first edit.
     setHistoryState(engine.historySnapshot())
+    setLayers(engine.layerSnapshot())
 
     return () => {
       offViewport()

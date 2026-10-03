@@ -35,8 +35,20 @@ export default class Layer {
     /** @type {OffscreenCanvas | HTMLCanvasElement | null} */
     this.canvas = null
 
+    /**
+     * Bumped whenever this layer's pixels change. The layer panel uses it as a
+     * cache key for thumbnails: same revision means same picture, so a stroke
+     * only costs one re-render instead of a redraw per frame.
+     */
+    this.revision = 0
+
     // Optional pre-fill colour (used for the initial background layer).
     if (fill) this.fillAll(fill)
+  }
+
+  /** Signal that the pixels changed, invalidating derived caches. */
+  markDirty() {
+    this.revision += 1
   }
 
   /** Lazily allocate the pixel buffer — never during construction. */

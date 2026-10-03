@@ -26,10 +26,12 @@ const markers = [
   ['document name', 'Untitled artwork'],
   ['active tool', 'Brush'],
   ['tool options', 'Hardness'],
-  ['inspector colour', 'Studio palette'],
-  ['inspector layers', 'Background'],
   ['status bar', 'Autosave ready'],
-  ['layer count', '3 layers'],
+  ['inspector colour', 'Studio palette'],
+  // Layers are supplied by the engine after attach, so SSR renders the
+  // section shell rather than rows — assert the shell, not the data.
+  ['inspector layers section', 'Layers'],
+  ['history empty state', 'scrub back through your work'],
 ]
 
 const missing = markers.filter(([, value]) => !flat.includes(value))

@@ -15,6 +15,7 @@ import assert from 'node:assert/strict'
 import process from 'node:process'
 
 import { createEditor } from '../src/engine/core/EditorController.js'
+import { EVENTS } from '../src/engine/core/constants.js'
 
 let passed = 0
 const failures = []
@@ -212,7 +213,58 @@ function flushFrames(times = 1) {
   }
 }
 
-globalThis.document = { createElement: () => makeCanvasElement() }
+/**
+ * A <textarea> stand-in for the text tool.
+ *
+ * The text tool is the one place a tool touches the DOM — it hands editing to a
+ * real textarea rather than reimplementing a caret. The stub records listeners
+ * so the test can simulate typing without a browser.
+ */
+function makeTextArea() {
+  return {
+    value: '',
+    style: {},
+    spellcheck: true,
+    focused: false,
+    removed: false,
+    listeners: {},
+    addEventListener(type, handler) {
+      this.listeners[type] = handler
+    },
+    removeEventListener() {},
+    setAttribute() {},
+    focus() {
+      this.focused = true
+    },
+    remove() {
+      this.removed = true
+    },
+    /** Simulate the user typing. */
+    type(text) {
+      this.value = text
+      this.listeners.input?.()
+    },
+    /** Simulate focus leaving the field (commits the text). */
+    blur() {
+      this.listeners.blur?.()
+    },
+  }
+}
+
+/** Every textarea the engine has created, newest last. */
+const createdTextareas = []
+
+globalThis.document = {
+  createElement: (tag) => {
+    if (tag === 'textarea') {
+      const element = makeTextArea()
+      createdTextareas.push(element)
+      return element
+    }
+    return makeCanvasElement()
+  },
+  body: { appendChild() {} },
+}
 
 globalThis.OffscreenCanvas = class {
   constructor(width, height) {
@@ -681,6 +733,347 @@ check('history evicts the oldest entry beyond its limit', () => {
     engine.history.limit,
     'stack must be capped at the limit',
   )
+})
+
+/* ----------------------------------------------------------------- layers */
+
+console.log('\nLayers')
+
+check('the panel snapshot is seeded from the engine, not from placeholders', () => {
+  const { engine } = makeEngine({ width: 60, height: 40 })
+  const snapshot = engine.layerSnapshot()
+
+  assert.ok(Array.isArray(snapshot), 'snapshot must be an array')
+  assert.equal(snapshot.length, engine.document.layers.length)
+  assert.equal(
+    snapshot.filter((layer) => layer.isActive).length,
+    1,
+    'exactly one layer is active',
+  )
+  // Painting lands on a middle layer by default, not the top one.
+  assert.equal(snapshot[0].isActive, false, 'the top layer is not the paint target')
+  assert.ok(
+    snapshot.every((layer) => typeof layer.revision === 'number'),
+    'every row carries a thumbnail cache key',
+  )
+  // The panel renders `meta` directly, so a missing field would print NaN.
+  assert.ok(snapshot.every((layer) => typeof layer.meta === 'string' && layer.meta.includes('×')))
+})
+
+check('adding a layer publishes a panel-shaped snapshot', () => {
+  const { engine } = makeEngine({ width: 60, height: 40 })
+  const seen = []
+  engine.on(EVENTS.LAYERS, (payload) => seen.push(payload))
+
+  const before = engine.document.layers.length
+  const added = engine.addLayerCommand({ name: 'Extra' })
+
+  assert.equal(engine.document.layers.length, before + 1)
+  assert.ok(seen.length > 0, 'the panel is notified')
+
+  // Regression guard: these used to emit document.toJSON() (an object), so the
+  // panel called .find() on a non-array and the whole app white-screened.
+  for (const payload of seen) {
+    assert.ok(Array.isArray(payload), 'every LAYERS payload is the snapshot array')
+  }
+
+  const latest = seen[seen.length - 1]
+  assert.equal(latest[0].name, 'Extra', 'the new layer lands on top')
+  assert.equal(latest[0].isActive, true, 'and becomes the active layer')
+  assert.equal(added.visible, true, 'a new layer is visible, not an empty ghost')
+})
+
+check('pasting as a new layer also publishes a snapshot array', () => {
+  const { engine } = makeEngine({ width: 40, height: 40 })
+  const layer = engine.document.paintableLayer()
+  layer.ensureCanvas().__ctx.__setPixels(40, 40, [10, 20, 30, 255])
+
+  engine.selection.selectRect({ x: 0, y: 0, width: 8, height: 8 }, {
+    mode: 'new', width: 40, height: 40,
+  })
+  engine.copySelection()
+
+  const seen = []
+  engine.on(EVENTS.LAYERS, (payload) => seen.push(payload))
+  engine.pasteClipboard({ asNewLayer: true })
+
+  assert.ok(seen.length > 0, 'the panel is notified')
+  assert.ok(seen.every(Array.isArray), 'paste must not publish the document JSON')
+})
+
+check('a locked or hidden layer is skipped when painting', () => {
+  const { engine } = makeEngine({ width: 40, height: 40 })
+  const layer = engine.document.paintableLayer()
+
+  engine.setLayerPropsCommand(layer.id, { locked: true })
+  assert.notEqual(engine.document.paintableLayer()?.id, layer.id, 'locked layer is skipped')
+
+  engine.setLayerPropsCommand(layer.id, { locked: false, visible: false })
+  assert.notEqual(engine.document.paintableLayer()?.id, layer.id, 'hidden layer is skipped')
+})
+
+check('layer properties are undoable', () => {
+  const { engine } = makeEngine({ width: 40, height: 40 })
+  const layer = engine.document.paintableLayer()
+
+  engine.setLayerPropsCommand(layer.id, { visible: false }, 'Hide')
+  assert.equal(engine.document.getLayer(layer.id).visible, false)
+
+  engine.undo()
+  assert.equal(engine.document.getLayer(layer.id).visible, true, 'undo restores visibility')
+
+  engine.setLayerPropsCommand(layer.id, { name: 'Sky' }, 'Rename')
+  assert.equal(engine.document.getLayer(layer.id).name, 'Sky')
+  engine.undo()
+  assert.notEqual(engine.document.getLayer(layer.id).name, 'Sky', 'undo restores the name')
+
+  engine.setLayerPropsCommand(layer.id, { opacity: 40 })
+  assert.equal(engine.document.getLayer(layer.id).opacity, 40)
+  engine.undo()
+  assert.equal(engine.document.getLayer(layer.id).opacity, 100)
+})
+
+check('reordering moves a layer and is undoable', () => {
+  const { engine } = makeEngine({ width: 40, height: 40 })
+  const before = engine.document.layers.map((layer) => layer.name)
+
+  // The panel is top-first, so direction -1 moves a row upward in the list.
+  const second = engine.document.layers[1].id
+  assert.equal(engine.moveLayerCommand(second, -1), true)
+  assert.equal(engine.document.layers[0].id, second, 'the layer moved to the top')
+  assert.equal(engine.moveLayerCommand(second, -1), false, 'cannot move past the top')
+
+  engine.undo()
+  assert.deepEqual(
+    engine.document.layers.map((layer) => layer.name),
+    before,
+    'undo restores the original order',
+  )
+})
+
+check('the last layer is protected, and deleting is undoable', () => {
+  const { engine } = makeEngine({ width: 40, height: 40 })
+
+  while (engine.document.layers.length > 1) {
+    assert.equal(engine.deleteLayerCommand(engine.document.layers[0].id), true)
+  }
+
+  assert.equal(
+    engine.deleteLayerCommand(engine.document.layers[0].id),
+    false,
+    'a document always keeps one layer',
+  )
+
+  engine.undo()
+  assert.equal(engine.document.layers.length, 2, 'undo restores the deleted layer')
+})
+
+check('duplicating a layer copies its pixels', () => {
+  const { engine } = makeEngine({ width: 30, height: 30 })
+  const source = engine.document.paintableLayer()
+  source.ensureCanvas().__ctx.__setPixels(30, 30, [9, 8, 7, 255])
+
+  const copy = engine.duplicateLayerCommand(source.id)
+  assert.ok(copy, 'a copy was created')
+  assert.equal(copy.ensureCanvas().__ctx.__pixels[0], 9, 'the pixels came along')
+
+  engine.undo()
+  assert.equal(engine.document.layers.includes(copy), false, 'undo removes the copy')
+})
+
+check('thumbnails blit the layer and honour the cache key', () => {
+  const { engine } = makeEngine({ width: 30, height: 30 })
+  const layer = engine.document.paintableLayer()
+  layer.ensureCanvas().__ctx.__setPixels(30, 30, [200, 30, 90, 255])
+
+  const target = makeCanvasElement()
+  target.width = 44
+  target.height = 32
+  target.__ctx.__setPixels(44, 32, [0, 0, 0, 0])
+
+  assert.equal(engine.drawLayerThumbnail(layer.id, target.__ctx, 44, 32), true)
+  assert.ok(target.__ctx.calls.some(([name]) => name === 'drawImage'), 'the layer was blitted')
+
+  // The thumbnail is centred, so sample the middle rather than a corner.
+  const centre = (16 * 44 + 22) * 4
+  assert.equal(target.__ctx.__pixels[centre], 200, 'the thumbnail carries the layer colour')
+
+  const before = engine.layerSnapshot().find((row) => row.id === layer.id).revision
+  engine.document.getLayer(layer.id).markDirty()
+  assert.ok(
+    engine.layerSnapshot().find((row) => row.id === layer.id).revision > before,
+    'the revision advances so the thumbnail is redrawn',
+  )
+
+  assert.equal(engine.drawLayerThumbnail('no-such-layer', target.__ctx, 44, 32), false)
+})
+
+/* ------------------------------------------------------------------- text */
+
+console.log('\nText')
+
+const textOptions = (extra = {}) => ({
+  fontSize: 20,
+  lineHeight: 120,
+  letterSpacing: 0,
+  fontFamily: 'sans',
+  fillSource: 'primary',
+  ...extra,
+})
+
+/**
+ * Make `fillText` actually mark pixels.
+ *
+ * The default stub only records calls, so before/after would be identical and
+ * the engine would (correctly) drop the commit as a no-op. Writing a pixel is
+ * what makes "this gesture changed something" observable.
+ */
+function paintTextInto(ctx, sink = null) {
+  ctx.fillText = function fillText(text, x, y) {
+    sink?.push({ text, x, y, fillStyle: this.fillStyle })
+
+    // Paint a short column *above* the baseline. The engine only compares the
+    // band covered by the reported bounds, and a glyph sits between the top of
+    // the line box and its baseline — never below it.
+    for (let row = Math.max(0, Math.round(y) - 6); row <= Math.round(y); row += 1) {
+      const px = Math.round(x)
+      if (px < 0 || row < 0 || px >= this.__width || row >= this.__height) continue
+      const at = (row * this.__width + px) * 4
+      this.__pixels[at] = 255
+      this.__pixels[at + 1] = 255
+      this.__pixels[at + 2] = 255
+      this.__pixels[at + 3] = 255
+    }
+  }
+}
+
+/** Type `text` through the real TextTool and commit it. */
+function commitText(engine, text) {
+  const created = createdTextareas.length
+  engine.pointer.onPointerDown(pointerEvent({ clientX: 10, clientY: 20 }))
+
+  const field = createdTextareas[created]
+  assert.ok(field, 'the tool opened a text field')
+  assert.equal(field.focused, true, 'the field takes focus so typing reaches it')
+
+  field.type(text)
+  // Switching tools commits, exactly as clicking away or pressing Esc does.
+  engine.tools.current.onActivate()
+  return field
+}
+
+check('text commits onto the active layer and is undoable', () => {
+  const { engine } = makeEngine({ width: 120, height: 80 })
+  identityView(engine, 120, 80)
+  useColors(engine, '#ff0000', '#0000ff')
+  engine.getOptions = () => textOptions()
+
+  const layer = engine.document.paintableLayer()
+  paintTextInto(layer.ensureCanvas().__ctx)
+
+  engine.tools.setActive('text')
+  const field = commitText(engine, 'Hello')
+
+  assert.equal(field.removed, true, 'the field is torn down on commit')
+  assert.equal(engine.history.entries().length, 1, 'one undoable text entry')
+  assert.equal(engine.history.entries()[0].label, 'Text')
+
+  engine.undo()
+  assert.equal(engine.history.entries().length, 0, 'undo removes the entry')
+})
+
+check('an empty text entry leaves no history behind', () => {
+  const { engine } = makeEngine({ width: 60, height: 60 })
+  identityView(engine, 60, 60)
+  engine.getOptions = () => textOptions()
+
+  engine.tools.setActive('text')
+  const field = commitText(engine, '')
+
+  assert.equal(field.removed, true)
+  assert.equal(engine.history.entries().length, 0, 'clicking without typing is a no-op')
+})
+
+check('text paints with the selected fill slot', () => {
+  const { engine } = makeEngine({ width: 80, height: 60 })
+  identityView(engine, 80, 60)
+  useColors(engine, '#ff0000', '#0000ff')
+  engine.getOptions = () => textOptions({ fillSource: 'secondary' })
+
+  // Watch the fill style the tool actually hands to the canvas.
+  const painted = []
+  const layer = engine.document.paintableLayer()
+  paintTextInto(layer.ensureCanvas().__ctx, painted)
+
+  engine.tools.setActive('text')
+  commitText(engine, 'Slot')
+
+  assert.ok(painted.length > 0, 'glyphs were drawn')
+  assert.ok(
+    painted.every((glyph) => glyph.fillStyle === '#0000ff'),
+    'the secondary slot colour was used, not the primary',
+  )
+})
+
+check('letter spacing is drawn glyph by glyph and widens the bounds', () => {
+  const measuredWithout = []
+  const measuredWith = []
+
+  const run = (tracking, sink) => {
+    const { engine } = makeEngine({ width: 200, height: 60 })
+    identityView(engine, 200, 60)
+    useColors(engine)
+    engine.getOptions = () => textOptions({ letterSpacing: tracking })
+
+    const layer = engine.document.paintableLayer()
+    const ctx = layer.ensureCanvas().__ctx
+    const real = ctx.measureText
+    ctx.measureText = (text) => {
+      sink.push(text)
+      return real(text)
+    }
+    paintTextInto(ctx)
+
+    engine.tools.setActive('text')
+    commitText(engine, 'AB')
+
+    // The newest command carries the exact region that was written.
+    return engine.history.past[engine.history.past.length - 1].rect
+  }
+
+  const tight = run(0, measuredWithout)
+  const wide = run(20, measuredWith)
+
+  assert.ok(
+    measuredWithout.includes('AB'),
+    'without tracking the line is measured as a single string',
+  )
+  assert.ok(
+    measuredWith.every((text) => text.length === 1),
+    'with tracking every glyph is measured on its own',
+  )
+  assert.ok(
+    wide.width > tight.width,
+    `tracking widens the committed bounds (${wide.width} > ${tight.width})`,
+  )
+})
+
+check('multi-line text grows downwards by the leading', () => {
+  const { engine } = makeEngine({ width: 200, height: 120 })
+  identityView(engine, 200, 120)
+  useColors(engine)
+  engine.getOptions = () => textOptions({ fontSize: 20, lineHeight: 150 })
+
+  const layer = engine.document.paintableLayer()
+  paintTextInto(layer.ensureCanvas().__ctx)
+
+  engine.tools.setActive('text')
+  commitText(engine, 'one\ntwo\nthree')
+
+  const rect = engine.history.past[engine.history.past.length - 1].rect
+  // 20px type at 150% leading: cap height plus two 30px gaps = 80.
+  assert.ok(rect.height >= 80, `bounds cover every line (got ${rect.height})`)
+  assert.ok(rect.height <= 90, 'and are not wildly oversized')
 })
 
 /* --------------------------------------------------------------- result */

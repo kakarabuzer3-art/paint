@@ -27,7 +27,7 @@ npm run build     # check + production build
 | 2 | Canvas engine (3 surfaces, viewport, pointer router) | done |
 | 3 | Core drawing tools | done |
 | 4 | Selection + transform + undo/redo | done |
-| 5 | Layers + Text | pending |
+| 5 | Layers + Text | done |
 | 6 | Import/export + file features | pending |
 | 7 | Smart productivity features | pending |
 | 8 | Visual polish + performance + accessibility | pending |
@@ -44,6 +44,10 @@ npm run build     # check + production build
    `transform`s on the wrapper, never canvas resizes.
 3. **Relative imports only** (no alias). Depth is `../../../lib` from
    `src/ui/components/<area>/file.jsx` — run `npm run check` after adding files.
+4. **The `LAYERS` event always carries `layerSnapshot()`** (an array). Never emit
+   `document.toJSON()` on that channel: the panel calls `.find()` on it, so an
+   object payload white-screens the app. Structure changes already publish
+   through `DocumentModel.onStructureChange`.
 
 ## Layout
 

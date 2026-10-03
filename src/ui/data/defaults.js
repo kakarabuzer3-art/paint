@@ -58,46 +58,6 @@ export const DEFAULT_PALETTE = [
 export const SEED_RECENT = ['#8b5cf6', '#22d3ee', '#f5f4ff', '#0c0a15', '#fbbf24', '#2dd4bf']
 
 /**
- * Placeholder layer stack used until the real LayerManager lands in Phase 5.
- * Shape mirrors what the engine will emit so the panel needs no rewrite.
- */
-export const SEED_LAYERS = [
-  {
-    id: 'layer-3',
-    name: 'Annotations',
-    kind: 'vector',
-    visible: true,
-    locked: false,
-    opacity: 100,
-    blendMode: 'source-over',
-    swatch: 'linear-gradient(135deg,#22d3ee,#8b5cf6)',
-    meta: '12 objects',
-  },
-  {
-    id: 'layer-2',
-    name: 'Paint',
-    kind: 'raster',
-    visible: true,
-    locked: false,
-    opacity: 100,
-    blendMode: 'source-over',
-    swatch: 'linear-gradient(135deg,#f43f5e,#fbbf24)',
-    meta: '1280 × 720',
-  },
-  {
-    id: 'layer-1',
-    name: 'Background',
-    kind: 'raster',
-    visible: true,
-    locked: true,
-    opacity: 100,
-    blendMode: 'source-over',
-    swatch: 'linear-gradient(135deg,#ffffff,#aeb3c4)',
-    meta: '1920 × 1080',
-  },
-]
-
-/**
  * The zoom ladder lives in engine/core/constants.js (the engine owns zoom),
  * so there is exactly one source of truth for zoom stops and clamping.
  */

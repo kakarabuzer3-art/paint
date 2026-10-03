@@ -1,18 +1,21 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { cn } from '../../../lib/cn.js'
-import Icon from '../../icons/Icon.jsx'
 import IconButton from '../common/IconButton.jsx'
 import Slider from '../common/Slider.jsx'
 import Select from '../common/Select.jsx'
 import { OPTION_DEFS } from '../../data/tools.js'
 import { useUi } from '../../state/context.js'
 
+/** Thumbnail box, in CSS pixels. */
+const THUMB_W = 44
+const THUMB_H = 32
+
 /**
  * Layer stack.
  *
  * Order note: `layers[0]` is the *top* of the stack (paint-over order), which
- * is how the list renders. The engine must adopt the same convention in
- * Phase 5 so this component needs no rewrite.
+ * is how the list renders. The engine adopts the same convention, so the panel
+ * and the compositor can never disagree about which layer is on top.
  */
 export default function LayerPanel() {
   const {
@@ -27,6 +30,7 @@ export default function LayerPanel() {
     duplicateLayer,
     deleteLayer,
     renameLayer,
+    moveLayer,
   } = useUi()
 
   const active = layers.find((layer) => layer.id === activeLayerId) ?? null
@@ -54,7 +58,7 @@ export default function LayerPanel() {
       </div>
 
       <ul className="scroll-slim flex max-h-[16.5rem] flex-col gap-1 overflow-y-auto pr-0.5">
-        {layers.map((layer) => (
+        {layers.map((layer, index) => (
           <LayerRow
             key={layer.id}
             layer={layer}
@@ -64,6 +68,8 @@ export default function LayerPanel() {
             onToggleLock={() => toggleLayerLock(layer.id)}
             onRename={(name) => renameLayer(layer.id, name)}
             onMove={(direction) => moveLayer(layer.id, direction)}
+            canMoveUp={index > 0}
+            canMoveDown={index < layers.length - 1}
           />
         ))}
       </ul>
@@ -92,7 +98,59 @@ export default function LayerPanel() {
   )
 }
 
-function LayerRow({ layer, active, onSelect, onToggleVisible, onToggleLock, onRename, onMove }) {
+/**
+ * A real thumbnail of the layer's pixels.
+ *
+ * Recognition over recall: you choose a layer by looking at it, so a coloured
+ * placeholder is worse than useless — it lies about what is actually on the
+ * layer. Redrawing is keyed on `layer.revision`, which the engine bumps once per
+ * committed gesture, so a brush stroke repaints the strip once instead of on
+ * every animation frame.
+ */
+function LayerThumbnail({ layer }) {
+  const { engine } = useUi()
+  const canvasRef = useRef(null)
+
+  useEffect(() => {
+    const canvas = canvasRef.current
+    if (!canvas || !engine) return
+
+    // Crisp on HiDPI displays, but capped so a 3× screen does not allocate a
+    // bitmap far larger than the box it is painted into.
+    const dpr = Math.min(globalThis.devicePixelRatio || 1, 2)
+    canvas.width = Math.round(THUMB_W * dpr)
+    canvas.height = Math.round(THUMB_H * dpr)
+
+    const ctx = canvas.getContext('2d')
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
+    engine.drawLayerThumbnail(layer.id, ctx, THUMB_W, THUMB_H)
+  }, [engine, layer.id, layer.revision])
+
+  return (
+    <span
+      className="checkerboard grid h-8 w-11 shrink-0 place-items-center overflow-hidden rounded-[7px] border border-white/20"
+      aria-hidden="true"
+    >
+      <canvas
+        ref={canvasRef}
+        style={{ width: THUMB_W, height: THUMB_H }}
+        className={cn('block', !layer.visible && 'opacity-20')}
+      />
+    </span>
+  )
+}
+
+function LayerRow({
+  layer,
+  active,
+  onSelect,
+  onToggleVisible,
+  onToggleLock,
+  onRename,
+  onMove,
+  canMoveUp,
+  canMoveDown,
+}) {
   const [editing, setEditing] = useState(false)
   const [draft, setDraft] = useState(layer.name)
 
@@ -135,22 +193,7 @@ function LayerRow({ layer, active, onSelect, onToggleVisible, onToggleLock, onRe
         aria-pressed={active}
         className="flex min-w-0 flex-1 items-center gap-2 rounded-[9px] py-0.5 text-left"
       >
-        <span
-          className="checkerboard grid h-8 w-11 shrink-0 place-items-center overflow-hidden rounded-[7px] border border-white/20"
-          aria-hidden="true"
-        >
-          <span
-            className={cn(
-              'h-6 w-9 rounded-[5px]',
-              !layer.visible && 'opacity-20',
-            )}
-            style={{
-              // Placeholder thumbnail tinted by stack position; real thumbnails
-              // generated from layer pixels come in the polish pass.
-              background: `linear-gradient(135deg, hsl(${(layer.index ?? 0) * 67 % 360} 72% 56%), hsl(${((layer.index ?? 0) * 67 + 45) % 360} 72% 44%))`,
-            }}
-          />
-        </span>
+        <LayerThumbnail layer={layer} />
 
         <span className="min-w-0 flex-1">
           {editing ? (
@@ -180,13 +223,15 @@ function LayerRow({ layer, active, onSelect, onToggleVisible, onToggleLock, onRe
       </button>
 
       {/* Reorder: buttons, not drag-and-drop — keyboard reachable and
-          discoverable, with drag as a later nicety. */}
+          discoverable, and disabled at the ends so the stack's bounds are
+          obvious instead of silently ignoring the click. */}
       <IconButton
         icon="chevronDown"
         label={`Move ${layer.name} up`}
         size="xs"
         tone="neutral"
         className="rotate-180"
+        disabled={!canMoveUp}
         onClick={() => onMove(-1)}
       />
       <IconButton
@@ -194,6 +239,7 @@ function LayerRow({ layer, active, onSelect, onToggleVisible, onToggleLock, onRe
         label={`Move ${layer.name} down`}
         size="xs"
         tone="neutral"
+        disabled={!canMoveDown}
         onClick={() => onMove(1)}
       />
 
