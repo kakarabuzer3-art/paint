@@ -45,6 +45,19 @@ const AUTOSAVE_DEBOUNCE_MS = 2000
 const MAX_RECENT_COMMANDS = 6
 const RECENT_COMMANDS_KEY = 'aurora.recentCommands'
 
+/** Simple/Advanced preference. Anything other than '0' means simple. */
+const SIMPLE_MODE_KEY = 'aurora.simpleMode'
+
+function readSimpleMode() {
+  try {
+    if (typeof localStorage === 'undefined') return true
+    // Absent key = a first visit, which gets Simple.
+    return localStorage.getItem(SIMPLE_MODE_KEY) !== '0'
+  } catch {
+    return true
+  }
+}
+
 /**
  * Command recency survives a reload.
  *
@@ -167,6 +180,45 @@ export default function UiProvider({ children }) {
   }, [])
 
   const resetOptions = useCallback(() => setOptionsState(DEFAULT_OPTIONS), [])
+
+  /**
+   * Apply a whole material bundle in one update.
+   *
+   * Merged rather than replacing, because a material only names the options it
+   * cares about — applying "Charcoal" must not silently reset the blend mode or
+   * anything else the user set up. One setState call also means the options bar
+   * never renders a half-applied material.
+   */
+  const setOptions = useCallback((patch) => {
+    setOptionsState((prev) => ({ ...prev, ...patch }))
+  }, [])
+
+  /**
+   * Simple mode: show only the controls that change what a mark looks like.
+   *
+   * Defaults to *on*. That default is the whole decision — a first-time visitor
+   * who lands on eight sliders has no way to know which three matter, and the
+   * usual response to an unclear interface is to leave. Someone who wants the
+   * rest can switch to Advanced once and never look back, which costs them one
+   * click; starting them in Advanced costs every first session its attention.
+   *
+   * Persisted because it is a preference about the person, not the document, and
+   * a mode that resets on every reload would be re-argued every reload.
+   */
+  const [simpleMode, setSimpleModeState] = useState(readSimpleMode)
+
+  const setSimpleMode = useCallback((value) => {
+    setSimpleModeState(value)
+    try {
+      if (typeof localStorage !== 'undefined') {
+        localStorage.setItem(SIMPLE_MODE_KEY, value ? '1' : '0')
+      }
+    } catch {
+      // Persistence is a nicety; failing to store it must not break the toggle.
+    }
+  }, [])
+
+  const toggleSimpleMode = useCallback(() => setSimpleMode(!simpleMode), [setSimpleMode, simpleMode])
 
   /* ----------------------------------------------------------------- colour */
   const rememberColor = useCallback((hex) => {
@@ -757,7 +809,12 @@ export default function UiProvider({ children }) {
       setTool,
       options,
       setOption,
+      setOptions,
       resetOptions,
+      simpleMode,
+      setSimpleMode,
+      toggleSimpleMode,
+      simpleMode, setSimpleMode, toggleSimpleMode,
       /* colour */
       primary,
       secondary,
@@ -844,7 +901,8 @@ export default function UiProvider({ children }) {
       hasClipboard,
     }),
     [
-      activeTool, setTool, options, setOption, resetOptions,
+      activeTool, setTool, options, setOption, setOptions, resetOptions,
+      simpleMode, setSimpleMode, toggleSimpleMode,
       primary, secondary, setPrimary, setSecondary, swapColors, resetColors,
       recentColors, pushRecent, clearRecent,
       recentCommands, noteCommand, clearRecentCommands,

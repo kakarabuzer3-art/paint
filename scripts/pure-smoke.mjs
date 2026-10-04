@@ -26,6 +26,7 @@ import {
   toRgbaString,
 } from '../src/lib/color.js'
 import HistoryStack from '../src/engine/history/HistoryStack.js'
+import { MATERIALS, matchMaterial, materialsFor } from '../src/ui/data/materials.js'
 import { fuzzyMatch, highlightSegments } from '../src/ui/hooks/useFuzzyMatch.js'
 
 let passed = 0
@@ -238,6 +239,67 @@ check('highlightSegments splits a label into hit and miss runs', () => {
   ])
   assert.deepEqual(highlightSegments('Add layer', []), [{ text: 'Add layer', hit: false }])
   assert.deepEqual(highlightSegments('Add layer', null), [{ text: 'Add layer', hit: false }])
+})
+
+/**
+ * Materials must be internally consistent, or they become traps.
+ *
+ * The most important rule: a material may only set options its tool actually
+ * exposes. Writing `{ hardness: 60 }` on a Pencil — which has no hardness
+ * control — produces a switch that silently does nothing while looking
+ * perfectly real. Nothing else in the app would catch it.
+ */
+const TOOL_OPTIONS = {
+  brush: ['size', 'hardness', 'opacity', 'flow', 'spacing', 'smoothing', 'pressure', 'blendMode'],
+  pencil: ['size', 'opacity', 'smoothing', 'blendMode'],
+  eraser: ['size', 'hardness', 'opacity', 'eraserMode'],
+}
+
+/** Colour must never be set by a material — that is the user's decision. */
+const FORBIDDEN = new Set(['color', 'primary', 'secondary'])
+
+for (const [toolId, list] of Object.entries(MATERIALS)) {
+  const allowed = new Set(TOOL_OPTIONS[toolId] ?? [])
+
+  for (const material of list) {
+    for (const key of Object.keys(material.options)) {
+      assert.ok(allowed.has(key), `${toolId}/${material.id} sets "${key}", which ${toolId} does not expose`)
+      assert.ok(!FORBIDDEN.has(key), `${toolId}/${material.id} must not set "${key}"`)
+    }
+    assert.ok(material.label && material.hint, `${toolId}/${material.id} needs a name and a hint`)
+    assert.ok(Number.isFinite(material.options.size), `${toolId}/${material.id} needs a size`)
+  }
+
+  assert.equal(
+    new Set(list.map((m) => m.id)).size,
+    list.length,
+    `${toolId} material ids must be unique`,
+  )
+}
+
+check('every material only sets options its tool actually exposes', () => {})
+
+check('tools with no materials return an empty list, never undefined', () => {
+  assert.deepEqual(materialsFor('shape'), [])
+  assert.deepEqual(materialsFor('nonexistent'), [])
+  assert.ok(materialsFor('brush').length > 0)
+})
+
+check('the first brush material is a forgiving all-rounder', () => {
+  // Choice architecture: whatever is listed first is what most people will
+  // paint with, so it should be the one least likely to ruin a first attempt.
+  const first = materialsFor('brush')[0]
+  assert.ok(first.options.opacity >= 90, 'fully opaque, so strokes are visible immediately')
+  assert.ok(first.options.hardness >= 60, 'a defined edge, not a smudge')
+})
+
+check('matchMaterial identifies the material currently held', () => {
+  const marker = materialsFor('brush')[0]
+  assert.equal(matchMaterial('brush', { ...marker.options, opacity: 55 })?.id, marker.id,
+    'a nudged flow does not lose the selection')
+  assert.equal(matchMaterial('brush', { size: 999, hardness: 1 }), null,
+    'an unlisted brush shows as custom rather than lying')
+  assert.equal(matchMaterial('shape', { size: 18 }), null)
 })
 
 /* ------------------------------------------------------------------- result */

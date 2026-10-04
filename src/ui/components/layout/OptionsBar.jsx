@@ -4,8 +4,38 @@ import Kbd from '../common/Kbd.jsx'
 import Tooltip from '../common/Tooltip.jsx'
 import IconButton from '../common/IconButton.jsx'
 import OptionControl from '../options/OptionControl.jsx'
+import MaterialPicker from '../options/MaterialPicker.jsx'
 import { TOOLS } from '../../data/tools.js'
 import { useUi } from '../../state/context.js'
+
+/**
+ * The controls worth showing someone who has not used a paint app before.
+ *
+ * The split is perceptual, not technical. Everything here changes what a mark
+ * *looks like* — how big, how dark, how defined its edge. Everything else
+ * (spacing, smoothing, pressure, flow, tolerance) changes how the tool is
+ * *built*, which is real work that pays off only after someone has formed a
+ * sense of what they want. Showing all of it at once is the single most common
+ * way paint apps lose beginners: every control looks equally important, so none
+ * of them looks safe to touch.
+ *
+ * Note what is deliberately absent — there is no separate "simple" brush engine
+ * or preset set. Simple mode changes what is *offered*, never what the brush
+ * does, so a beginner and an expert are drawing with the identical tool and a
+ * beginner's work is never a special case that behaves differently later.
+ */
+const ESSENTIAL_OPTIONS = new Set([
+  'size',
+  'hardness',
+  'opacity',
+  'fontSize',
+  'fontFamily',
+  'strokeWidth',
+  'shapeMode',
+  'tolerance',
+  'eraserMode',
+  'sampleSize',
+])
 
 /**
  * Contextual options bar — the primary expression of progressive disclosure.
@@ -15,7 +45,7 @@ import { useUi } from '../../state/context.js'
  * in place without moving the canvas (no layout shift under the cursor).
  */
 export default function OptionsBar() {
-  const { activeTool, options, setOption, resetOptions, panels } = useUi()
+  const { activeTool, options, setOption, resetOptions, panels, simpleMode } = useUi()
 
   if (!panels.options) return null
 
@@ -41,20 +71,30 @@ export default function OptionsBar() {
         </div>
       </div>
 
+      {/* Materials lead, before the numbers. In Simple mode they are the only
+          way to change a brush — which is the whole point of Simple mode. */}
+      <MaterialPicker />
+
       <span className="h-7 w-px shrink-0 bg-white/10" />
 
       {hasOptions ? (
         <div className="flex min-w-0 items-end gap-4">
-          {tool.options.map((optionId, index) => (
-            <div key={optionId} className="contents">
-              {index > 0 && <span className="h-7 w-px shrink-0 self-center bg-white/[0.07]" />}
-              <OptionControl
-                id={optionId}
-                value={options[optionId]}
-                onChange={(value) => setOption(optionId, value)}
-              />
-            </div>
-          ))}
+          {tool.options
+            // Simple mode keeps the controls that change how the mark *looks*
+            // and drops the ones that tune how it is *made*. A beginner who
+            // cannot find "spacing" will not miss it; a beginner shown eight
+            // sliders at once will not touch any of them.
+            .filter((id) => !simpleMode || ESSENTIAL_OPTIONS.has(id))
+            .map((optionId, index) => (
+              <div key={optionId} className="contents">
+                {index > 0 && <span className="h-7 w-px shrink-0 self-center bg-white/[0.07]" />}
+                <OptionControl
+                  id={optionId}
+                  value={options[optionId]}
+                  onChange={(value) => setOption(optionId, value)}
+                />
+              </div>
+            ))}
         </div>
       ) : (
         <p className="min-w-0 truncate text-[11px] text-fg-subtle">

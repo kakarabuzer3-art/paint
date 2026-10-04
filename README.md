@@ -5,6 +5,33 @@ Canvas API with **React + JSX** and **Tailwind CSS v4**. Original Aurora Glass
 UI: translucent panels, soft aurora gradients, refined typography, and a canvas
 that stays the visual centrepiece.
 
+## Design language: clay
+
+The surface style is **claymorphism**, not glassmorphism. Three rules drive every
+panel, and they are enforced in `index.css`:
+
+1. **Matte.** There is no `backdrop-filter` and no translucency anywhere in the
+   app. A translucent panel is a glass panel — translucency had to go rather than
+   be dialled back.
+2. **Lit from one side.** Every elevation token is a *pair*: a dark shadow down-
+   right and a faint light shadow up-left. That pairing is the whole illusion —
+   the eye reads it as a soft solid resting on the surface, and dropping either
+   half collapses it into a flat cutout. The light shadow is deliberately very
+   faint, because on a dark surface a bright rim reads as *glow*, which is the
+   glass look all over again.
+3. **Chunky.** Thick radii (panel 22px, dialog 28px) so corners read as moulded
+   rather than cut.
+
+There are five tiers — `.clay` (chip), `.clay-2` (panel), `.clay-3` (dialog),
+`.clay-solid` (long-form text), and `.clay-inset` (pressed, the inverted twin of
+the raised pair). There is no specular highlight and no sheen sweep, because
+those are the signature cues of lit glass and clay has neither.
+
+`forced-colors` (Windows High Contrast) needed rethinking rather than renaming:
+a clay panel's *entire* separation comes from its shadow pair, and that mode
+discards author shadows — which would have collapsed every panel into the page.
+System colours and real borders are opted back in instead.
+
 ## Features
 
 **16 tools** — Rect Select `V`, Lasso `L`, Magic Wand `W`, Move `M`, Transform `Y`,
@@ -15,6 +42,15 @@ Ellipse `O`, Line `N`, Text `T`, Zoom `Z`, Pan `H`.
   hardness, residual-based spacing so stroke density stays uniform at any
   frame rate, and exponential smoothing on the input path. Plus anti-aliased
   shapes, 15° line snapping (hold Shift), and a flood fill with tolerance.
+- **Named materials** — 15 presets across brush, pencil and eraser (Charcoal,
+  Airbrush, Watercolour, Ink pen, Crayon…), each a coherent bundle of the
+  settings that only make sense together. Numbers are still there underneath;
+  names are what you choose from.
+- **Simple / Advanced mode** — Simple is the default and shows only the
+  controls that change what a mark *looks like* (size, hardness, opacity…), and
+  switches what is **offered**, never what the brush *does*, so a beginner's
+  work is never a special case that behaves differently later. Persisted across
+  sessions.
 - **Selection** — rectangular, freehand lasso and magic wand, all backed by a
   `Uint8Array` mask with live bounds. Cut, copy, paste-as-layer, invert and
   delete, every one undoable.

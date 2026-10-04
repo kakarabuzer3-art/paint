@@ -36,6 +36,10 @@ const markers = [
   ['skip link', 'Skip to canvas'],
   ['canvas application role', 'role="application"'],
   ['canvas focus target', 'id="canvas-stage"'],
+  // Simple mode hides advanced sliders by default, so the collapsed options
+  // bar and the mode label are the proof it is actually on.
+  ['simple mode label', 'Simple'],
+  ['material picker', 'Material'],
 ]
 
 const missing = markers.filter(([, value]) => !flat.includes(value))

@@ -34,6 +34,8 @@ export default function TopBar() {
     isDirty,
     saveProject,
     openFilePicker,
+    simpleMode,
+    toggleSimpleMode,
   } = useUi()
 
   // Naming the action in the tooltip is recognition over recall — you always
@@ -166,6 +168,36 @@ export default function TopBar() {
       </button>
 
       <ZoomControls />
+
+      {/*
+        Simple / Advanced.
+
+        Labelled in words rather than shown as a toggle icon, because the two
+        states mean different things and a switch glyph does not say which mode
+        you are in. It is a two-way choice, not a boolean you flip blind — the
+        label is the state, so there is never a moment of guessing.
+      */}
+      <Tooltip
+        label={
+          simpleMode
+            ? 'Simple mode: showing the controls that matter. Switch to Advanced for every setting.'
+            : 'Advanced mode: showing all settings. Switch to Simple for just the essentials.'
+        }
+      >
+        <button
+          type="button"
+          onClick={toggleSimpleMode}
+          aria-pressed={!simpleMode}
+          className={cn(
+            'clay flex h-8 shrink-0 items-center gap-1.5 rounded-[12px] px-2.5 text-[11.5px] font-medium tracking-tight',
+            'transition-colors duration-150 hover:bg-[#282336]',
+            simpleMode ? 'text-fg-muted' : 'text-fg',
+          )}
+        >
+          <Icon name={simpleMode ? 'sparkle' : 'sliders'} size={13} />
+          <span className="hidden sm:inline">{simpleMode ? 'Simple' : 'Advanced'}</span>
+        </button>
+      </Tooltip>
 
       {/* ------------------------------------------------------------- panels */}
       <div className="flex shrink-0 items-center gap-0.5">

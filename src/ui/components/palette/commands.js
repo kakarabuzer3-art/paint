@@ -80,6 +80,16 @@ export function buildCommands(ui) {
       run: () => ui.openDialog('export'),
     },
     {
+      // Labelled as the action it performs, not as a state, so the entry reads
+      // correctly whether Simple mode is currently on or off.
+      id: 'settings:mode',
+      group: 'Panels',
+      label: () => (ui.simpleMode ? 'Switch to Advanced mode' : 'Switch to Simple mode'),
+      icon: 'sliders',
+      keywords: 'simple advanced easy beginner settings options complexity mode',
+      run: () => ui.toggleSimpleMode(),
+    },
+    {
       id: 'view:fit',
       group: 'View',
       label: 'Fit document to screen',
