@@ -8,8 +8,9 @@
     "dev": "vite",
     "check": "node scripts/check-imports.mjs",
     "engine": "node scripts/engine-smoke.mjs",
+    "pure": "node scripts/pure-smoke.mjs",
     "engine-dom": "node scripts/engine-dom-smoke.mjs",
-    "test": "npm run check && npm run engine && npm run engine-dom && npm run smoke",
+    "test": "npm run check && npm run pure && npm run engine && npm run engine-dom && npm run smoke",
     "smoke": "vite build --ssr scripts/ssr-smoke.jsx --outDir .smoke && node .smoke/ssr-smoke.js",
     "build": "npm run check && vite build",
     "preview": "vite preview --port 4173"
