@@ -17,8 +17,12 @@ export const mod = isMac ? '⌘' : 'Ctrl'
  * accelerator, never the only path to an action (progressive disclosure:
  * power users get a fast lane, newcomers still have buttons).
  *
- * Phase 7 adds recency ranking and engine-backed commands; the shape stays
- * the same so no caller needs to change.
+ * Phase 7 shape additions, both optional so existing entries are untouched:
+ *   - `when(ui)` hides a command that cannot currently do anything. A "Redo"
+ *     with nothing to redo is noise, and a keyboard user who selects it and
+ *     gets nothing has no way to know why.
+ *   - `label` may be a function, so the palette can name the actual thing being
+ *     acted on ("Delete layer ‘Background’") instead of a generic noun.
  *
  * @param {object} ui — the UiProvider value
  */
@@ -132,10 +136,14 @@ export function buildCommands(ui) {
     {
       id: 'layer:del',
       group: 'Layers',
-      label: 'Delete active layer',
+      label: () => {
+        const name = ui.layers.find((layer) => layer.id === ui.activeLayerId)?.name
+        return name ? `Delete layer “${name}”` : 'Delete active layer'
+      },
       icon: 'trash',
       kbd: 'Del',
       keywords: 'delete remove layer',
+      when: () => Boolean(ui.activeLayerId),
       run: () => ui.deleteLayer(ui.activeLayerId),
     },
     {
@@ -216,10 +224,14 @@ export function buildCommands(ui) {
     {
       id: 'edit:undo',
       group: 'Edit',
-      label: 'Undo',
+      label: () => {
+        const last = ui.historyEntries.at(-1)?.label
+        return last ? `Undo ${last.toLowerCase()}` : 'Undo'
+      },
       icon: 'undo',
       kbd: `${mod}Z`,
       keywords: 'undo revert go back history step',
+      when: () => ui.canUndo,
       run: () => ui.undo(),
     },
     {
@@ -229,6 +241,7 @@ export function buildCommands(ui) {
       icon: 'redo',
       kbd: `${mod}⇧+Z`,
       keywords: 'redo forward history replay',
+      when: () => ui.canRedo,
       run: () => ui.redo(),
     },
     {
@@ -238,6 +251,7 @@ export function buildCommands(ui) {
       icon: 'copy',
       kbd: `${mod}C`,
       keywords: 'copy selection clipboard duplicate pixels',
+      when: (state) => !state.selection.isEmpty,
       run: () => ui.copy(),
     },
     {
@@ -247,6 +261,7 @@ export function buildCommands(ui) {
       icon: 'crop',
       kbd: `${mod}X`,
       keywords: 'cut selection clipboard remove pixels',
+      when: (state) => !state.selection.isEmpty,
       run: () => ui.cut(),
     },
     {
@@ -256,6 +271,8 @@ export function buildCommands(ui) {
       icon: 'layers',
       kbd: `${mod}V`,
       keywords: 'paste clipboard new layer selection',
+      // Without this, pasting an empty clipboard silently does nothing.
+      when: (state) => state.hasClipboard,
       run: () => ui.paste(),
     },
     {
@@ -265,6 +282,7 @@ export function buildCommands(ui) {
       icon: 'trash',
       kbd: 'Del',
       keywords: 'delete clear erase selection pixels',
+      when: (state) => !state.selection.isEmpty,
       run: () => ui.deleteSelection(),
     },
     {
@@ -283,6 +301,7 @@ export function buildCommands(ui) {
       icon: 'x',
       kbd: 'Esc',
       keywords: 'deselect none clear remove selection',
+      when: (state) => !state.selection.isEmpty,
       run: () => ui.deselect(),
     },
     {
@@ -296,5 +315,5 @@ export function buildCommands(ui) {
     },
   )
 
-  return list
+  return list.filter((command) => (command.when ? command.when(ui) : true))
 }

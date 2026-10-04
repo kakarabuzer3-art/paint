@@ -18,18 +18,44 @@ import { createEditor } from '../src/engine/core/EditorController.js'
 import { EVENTS } from '../src/engine/core/constants.js'
 import { exportFilename, isImportableFile, sanitizeFilename } from '../src/engine/io/codec.js'
 import { PROJECT_VERSION, parseProject, serializeProject } from '../src/engine/io/project.js'
+import {
+  clearSnapshot,
+  describeAge,
+  describeSnapshot,
+  isAutosaveSupported,
+  loadSnapshot,
+  saveSnapshot,
+} from '../src/engine/io/autosave.js'
+import { rankItems } from '../src/ui/hooks/useFuzzyMatch.js'
+import { buildCommands } from '../src/ui/components/palette/commands.js'
 
 let passed = 0
 const failures = []
+/** Async checks are collected here so the summary waits for them. */
+const pending = []
 
 function check(name, fn) {
+  const settle = (error) => {
+    if (error) {
+      failures.push([name, error.message])
+      console.log(`  FAIL ${name}\n       ${error.message}`)
+    } else {
+      passed += 1
+      console.log(`  ok   ${name}`)
+    }
+  }
+
   try {
-    fn()
-    passed += 1
-    console.log(`  ok   ${name}`)
+    const result = fn()
+    // A few checks are genuinely async (IndexedDB is promise-based), so the
+    // harness accepts both without every sync call site having to await.
+    if (result && typeof result.then === 'function') {
+      pending.push(result.then(() => settle(null), settle))
+      return
+    }
+    settle(null)
   } catch (error) {
-    failures.push([name, error.message])
-    console.log(`  FAIL ${name}\n       ${error.message}`)
+    settle(error)
   }
 }
 
@@ -1243,7 +1269,129 @@ check('opening an image as a document resizes and resets the stack', () => {
   assert.equal(engine.history.entries().length, 0, 'the old document is not undoable')
 })
 
+/* --------------------------------------------------- phase 7: autosave + UI logic */
+
+check('autosave degrades safely when storage is unavailable', async () => {
+  // Node has no indexedDB; every entry point must still resolve to a harmless
+  // value rather than throwing into a render.
+  assert.equal(isAutosaveSupported(), false)
+  assert.equal(await saveSnapshot({ layers: [] }), null)
+  assert.equal(await loadSnapshot(), null)
+  assert.equal(await clearSnapshot(), false)
+})
+
+check('describeAge reads naturally at every scale', () => {
+  const now = 1_000_000_000
+  assert.equal(describeAge(now, now), 'just now')
+  assert.equal(describeAge(now - 59_000, now), 'just now', 'still under a minute')
+  assert.equal(describeAge(now - 60_000, now), '1 minute ago', 'singular')
+  assert.equal(describeAge(now - 150_000, now), '2 minutes ago', 'plural, floored')
+  assert.equal(describeAge(now - 3_600_000, now), '1 hour ago')
+  assert.equal(describeAge(now - 7_200_000, now), '2 hours ago')
+  assert.equal(describeAge(now - 86_400_000, now), '1 day ago')
+  assert.equal(describeAge(now - 3 * 86_400_000, now), '3 days ago')
+})
+
+check('describeAge never reports a negative age from clock skew', () => {
+  // A snapshot stamped in the future (clock changed, or a corrupted record)
+  // must read as "just now" rather than "-2 minutes ago".
+  assert.equal(describeAge(2_000_000_000, 1_000_000_000), 'just now')
+})
+
+check('describeSnapshot summarises size and layer count', () => {
+  assert.equal(describeSnapshot({ width: 1920, height: 1080, layers: [{}, {}] }), '1920 × 1080 · 2 layers')
+  assert.equal(describeSnapshot({ width: 800, height: 600, layers: [{}] }), '800 × 600 · 1 layer')
+  assert.equal(describeSnapshot(null), '0 × 0 · 0 layers', 'a missing project is survivable')
+})
+
+check('recency promotes used commands without breaking relevance', () => {
+  const items = [
+    { id: 'a', label: 'Alpha', keywords: 'alpha one' },
+    { id: 'b', label: 'Beta', keywords: 'beta two' },
+    { id: 'c', label: 'Gamma', keywords: 'gamma three' },
+  ]
+
+  // With no query, the most recent command leads and the rest keep their order.
+  const noQuery = rankItems('', items, ['c', 'a'])
+  assert.equal(noQuery[0].item.id, 'c', 'most recent first')
+  assert.deepEqual(noQuery.map((hit) => hit.item.id), ['c', 'a', 'b'], 'rest is stable')
+
+  // A recency boost must not promote a command that does not match the query.
+  const unrelated = rankItems('gamma', items, ['a', 'b', 'c'])
+  assert.equal(unrelated[0].item.id, 'c', 'the only match still wins')
+
+  // Recency reorders equally-relevant matches.
+  const tie = rankItems('a', [
+    { id: 'x', label: 'A one', keywords: 'a one' },
+    { id: 'y', label: 'A two', keywords: 'a two' },
+  ], ['y'])
+  assert.equal(tie[0].item.id, 'y', 'the recently used of two equal matches wins')
+
+  // A literal substring hit must still beat recency, however stale.
+  const literal = rankItems('alpha', items, ['b', 'b2', 'c', 'c2'])
+  assert.equal(literal[0].item.id, 'a', 'a real match outranks a popular non-match')
+})
+
+check('commands with unmet conditions are omitted, not shown dead', () => {
+  // A pristine document: no history, no selection, no clipboard.
+  const ui = {
+    canUndo: false,
+    canRedo: false,
+    hasClipboard: false,
+    selection: { isEmpty: true },
+    layers: [{ id: 'l1', name: 'Background' }],
+    activeLayerId: 'l1',
+    historyEntries: [],
+    setTool() {},
+    undo() {},
+    redo() {},
+    copy() {},
+    cut() {},
+    paste() {},
+    deleteSelection() {},
+    selectAll() {},
+    deselect() {},
+    invertSelection() {},
+    deleteLayer() {},
+  }
+
+  const ids = buildCommands(ui).map((command) => command.id)
+  assert.ok(!ids.includes('edit:redo'), 'redo with nothing to redo is hidden')
+  assert.ok(!ids.includes('edit:undo'), 'undo with an empty history is hidden')
+  assert.ok(!ids.includes('edit:copy'), 'copy needs a selection')
+  assert.ok(!ids.includes('edit:paste'), 'paste needs a clipboard')
+  assert.ok(ids.includes('select:all'), 'always-valid commands survive')
+
+  // Same shape, richer state: the gated commands come back.
+  const rich = buildCommands({
+    ...ui,
+    canUndo: true,
+    canRedo: true,
+    hasClipboard: true,
+    selection: { isEmpty: false },
+    historyEntries: [{ label: 'Brush stroke' }],
+  })
+  const richIds = rich.map((command) => command.id)
+  assert.ok(richIds.includes('edit:redo') && richIds.includes('edit:undo'))
+  assert.ok(richIds.includes('edit:copy') && richIds.includes('edit:paste'))
+
+  const undo = rich.find((command) => command.id === 'edit:undo')
+  assert.equal(undo.label(), 'Undo brush stroke', 'undo names the action it reverses')
+})
+
+check('command labels can name the layer they act on', () => {
+  const ui = {
+    activeLayerId: 'l2',
+    layers: [{ id: 'l1', name: 'Background' }, { id: 'l2', name: 'Sketch' }],
+    selection: { isEmpty: true },
+    deleteLayer() {},
+  }
+  const remove = buildCommands(ui).find((command) => command.id === 'layer:del')
+  assert.equal(remove.label(), 'Delete layer “Sketch”')
+})
+
 /* --------------------------------------------------------------- result */
+await Promise.all(pending)
 console.log('')
 if (failures.length > 0) {
   console.error(`engine-dom smoke FAILED — ${passed} passed, ${failures.length} failed`)

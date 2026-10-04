@@ -29,7 +29,7 @@ npm run build     # check + production build
 | 4 | Selection + transform + undo/redo | done |
 | 5 | Layers + Text | done |
 | 6 | Import/export + file features | done |
-| 7 | Smart productivity features | pending |
+| 7 | Smart productivity features | done |
 | 8 | Visual polish + performance + accessibility | pending |
 | 9 | Final testing + competition demo polish | pending |
 
@@ -63,7 +63,8 @@ src/
     render/    Compositor, ScratchRenderer, OverlayRenderer, CanvasFactory,
                dirtyRect, floodFill, handles
     io/        codec (PNG/JPEG/WebP encode + decode), project (the `.aurora`
-               save format: JSON + per-layer lossless PNG data URLs)
+               save format: JSON + per-layer lossless PNG data URLs),
+               autosave (IndexedDB crash-recovery snapshots)
     brush/     BrushEngine — cached brush tips + spacing/smoothing sampler
     history/   Command, HistoryStack, commands (pixel patches + structure)
     selection/ SelectionManager (Uint8Array mask + bounds), ops (extract/clear/stamp)
@@ -83,7 +84,7 @@ src/
       color/      ColorPicker + ColorPanel
       layers/     LayerPanel
       palette/    CommandPalette + command registry
-      dialogs/    New document, shortcuts, colour, export
+      dialogs/    New document, shortcuts, colour, export, recovery
 scripts/      check-imports.mjs, engine-smoke.mjs, engine-dom-smoke.mjs, ssr-smoke.jsx
 ```
 

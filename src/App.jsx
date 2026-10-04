@@ -7,6 +7,7 @@ import ShortcutsDialog from './ui/components/dialogs/ShortcutsDialog.jsx'
 import NewDocumentDialog from './ui/components/dialogs/NewDocumentDialog.jsx'
 import ColorDialog from './ui/components/dialogs/ColorDialog.jsx'
 import ExportDialog from './ui/components/dialogs/ExportDialog.jsx'
+import RecoveryDialog from './ui/components/dialogs/RecoveryDialog.jsx'
 import useKeyboardShortcuts from './ui/hooks/useKeyboardShortcuts.js'
 
 /**
@@ -28,6 +29,7 @@ function Studio() {
       <NewDocumentDialog />
       <ColorDialog />
       <ExportDialog />
+      <RecoveryDialog />
       <Toaster />
     </>
   )

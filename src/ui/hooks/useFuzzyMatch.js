@@ -47,20 +47,48 @@ export function fuzzyMatch(query, target) {
 }
 
 /**
+ * Bonus applied to a recently used command.
+ *
+ * Sized to sit *between* fuzzy tiers rather than above them: recency should
+ * reorder plausible matches, never promote something that does not match the
+ * query at all. A gap of 12 means a command used 3 steps ago outranks a
+ * scattered-subsequence match but loses to a literal substring hit.
+ */
+const RECENCY_STEP = 12
+
+/** @param {string} id @param {string[]} recent most-recent-first */
+function recencyBoost(id, recent) {
+  const index = recent.indexOf(id)
+  return index === -1 ? 0 : (recent.length - index) * RECENCY_STEP
+}
+
+/**
  * Sort and filter items by their best-matching searchable text.
+ *
  * @param {string} query
  * @param {Array<{ keywords: string, ... }>} items
+ * @param {string[]} [recent] command ids, most recently used first
  */
-export function rankItems(query, items) {
-  if (!query.trim()) return items.map((item) => ({ item, indices: [] }))
+export function rankItems(query, items, recent = []) {
+  if (!query.trim()) {
+    // With no query there is nothing to match, so recency is the only signal
+    // that distinguishes results — and a stable sort keeps everything else in
+    // its authored group order.
+    return items
+      .map((item, order) => ({ item, indices: [], boost: recencyBoost(item.id, recent), order }))
+      .sort((a, b) => b.boost - a.boost || a.order - b.order)
+      .map(({ item, indices }) => ({ item, indices }))
+  }
 
   const results = []
   for (const item of items) {
     const match = fuzzyMatch(query, item.keywords ?? item.label)
-    if (match) results.push({ item, ...match })
+    if (match) {
+      results.push({ item, ...match, boost: recencyBoost(item.id, recent) })
+    }
   }
 
-  return results.sort((a, b) => b.score - a.score)
+  return results.sort((a, b) => b.score + b.boost - (a.score + a.boost))
 }
 
 /** Split a label into plain/highlighted segments for rendering. */

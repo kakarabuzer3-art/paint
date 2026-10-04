@@ -7,6 +7,11 @@ import { highlightSegments, rankItems } from '../../hooks/useFuzzyMatch.js'
 import { buildCommands, GROUP_ORDER } from './commands.js'
 import { useUi } from '../../state/context.js'
 
+/** Resolve a command's label, which may be a function of live UI state. */
+function labelOf(command) {
+  return typeof command.label === 'function' ? command.label() : command.label
+}
+
 /**
  * Global command palette (⌘/Ctrl+K).
  *
@@ -26,17 +31,25 @@ export default function CommandPalette() {
   const open = ui.dialogs.palette
 
   const commands = useMemo(() => buildCommands(ui), [ui])
-  const ranked = useMemo(() => rankItems(query, commands), [query, commands])
-  const flat = useMemo(() => ranked.map((hit) => hit.item), [ranked])
+  const ranked = useMemo(
+    () => rankItems(query, commands, ui.recentCommands),
+    [query, commands, ui.recentCommands],
+  )
+  const flat = useMemo(
+    () => ranked.map((hit) => ({ ...hit.item, label: labelOf(hit.item) })),
+    [ranked],
+  )
 
   const groups = useMemo(() => {
     const buckets = new Map(GROUP_ORDER.map((group) => [group, []]))
-    for (const hit of ranked) buckets.get(hit.item.group)?.push(hit)
+    // Bucket the resolved `flat` entries, not `ranked`, so a function label is
+    // rendered as text and not called on the DOM side.
+    flat.forEach((item, index) => buckets.get(item.group)?.push({ item, index }))
     return GROUP_ORDER.filter((group) => buckets.get(group).length).map((group) => ({
       group,
       items: buckets.get(group),
     }))
-  }, [ranked])
+  }, [flat])
 
   /* --------------------------------------------------------------- focus */
   useEffect(() => {
@@ -63,6 +76,9 @@ export default function CommandPalette() {
   const runCommand = useCallback(
     (command) => {
       if (!command) return
+      // Recorded before closing so the next open of the palette is already
+      // reordered, and only for commands the user actually chose.
+      ui.noteCommand(command.id)
       ui.closeDialog('palette')
       // Defer so focus restoration completes before a dialog opens.
       requestAnimationFrame(() => command.run())
@@ -98,7 +114,11 @@ export default function CommandPalette() {
 
   if (!open) return null
 
-  const indexOf = new Map(flat.map((item, index) => [item.id, index]))
+  /** Match positions per command id, for rendering the highlighted label. */
+  const highlightIndices = useMemo(
+    () => new Map(ranked.map((hit) => [hit.item.id, hit.indices])),
+    [ranked],
+  )
 
   return createPortal(
     <div className="fixed inset-0 z-[110] flex items-start justify-center px-4 pt-[12vh] pb-8">
@@ -163,13 +183,18 @@ export default function CommandPalette() {
                   {group}
                 </p>
 
-                {items.map((hit) => {
-                  const index = indexOf.get(hit.item.id)
+                {items.map(({ item, index }) => {
                   const isActive = index === activeIndex
+                  // Match indices are computed against `keywords`, which is
+                  // longer than the label, so clamp them to the rendered text
+                  // before using them to split it.
+                  const indices = (highlightIndices.get(item.id) ?? []).filter(
+                    (position) => position < item.label.length,
+                  )
 
                   return (
                     <div
-                      key={hit.item.id}
+                      key={item.id}
                       id={`palette-option-${index}`}
                       role="option"
                       aria-selected={isActive}
@@ -179,7 +204,7 @@ export default function CommandPalette() {
                       onMouseEnter={() => setActiveIndex(index)}
                       onMouseDown={(event) => {
                         event.preventDefault()
-                        runCommand(hit.item)
+                        runCommand(item)
                       }}
                       className={cn(
                         'flex cursor-pointer items-center gap-2.5 rounded-[10px] px-2.5 py-2 transition-colors duration-100',
@@ -187,12 +212,12 @@ export default function CommandPalette() {
                       )}
                     >
                       <Icon
-                        name={hit.item.icon}
+                        name={item.icon}
                         size={15}
                         className={cn('shrink-0', isActive ? 'text-fg' : 'text-fg-subtle')}
                       />
                       <span className="min-w-0 flex-1 truncate text-[13px] tracking-tight">
-                        {highlightSegments(hit.item.label, hit.indices).map((segment, segmentIndex) => (
+                        {highlightSegments(item.label, indices).map((segment, segmentIndex) => (
                           <span
                             key={segmentIndex}
                             className={segment.hit ? 'aurora-text font-semibold' : undefined}
@@ -201,7 +226,7 @@ export default function CommandPalette() {
                           </span>
                         ))}
                       </span>
-                      {hit.item.kbd && <Kbd size="sm">{hit.item.kbd}</Kbd>}
+                      {item.kbd && <Kbd size="sm">{item.kbd}</Kbd>}
                     </div>
                   )
                 })}
@@ -222,8 +247,20 @@ export default function CommandPalette() {
           <span className="flex items-center gap-1.5">
             <Kbd size="sm">Esc</Kbd> close
           </span>
-          <span className="ml-auto hidden sm:inline">
-            {flat.length} command{flat.length === 1 ? '' : 's'}
+          <span className="ml-auto hidden items-center gap-3 sm:flex">
+            <span>
+              {flat.length} command{flat.length === 1 ? '' : 's'}
+            </span>
+            {/* Recency is a learned preference, so it needs an undo. */}
+            {ui.recentCommands.length > 0 && !query && (
+              <button
+                type="button"
+                onClick={ui.clearRecentCommands}
+                className="text-fg-subtle transition-colors duration-100 hover:text-fg"
+              >
+                Clear recent
+              </button>
+            )}
           </span>
         </div>
       </div>

@@ -4,6 +4,13 @@ import Icon from '../../icons/Icon.jsx'
 import { TOOLS } from '../../data/tools.js'
 import { useUi } from '../../state/context.js'
 
+/** Autosave states the status bar is allowed to talk about. */
+const AUTOSAVE_LABELS = {
+  saving: 'Autosaving…',
+  saved: 'Recovery on',
+  unavailable: 'Recovery unavailable',
+}
+
 /**
  * Bottom status bar.
  *
@@ -14,7 +21,7 @@ import { useUi } from '../../state/context.js'
  * every mousemove, which is the classic canvas-app performance mistake.
  */
 export default function StatusBar() {
-  const { activeTool, doc, zoom, layers, activeLayerId, cursorRef, panels, selection, isDirty } =
+  const { activeTool, doc, zoom, layers, activeLayerId, cursorRef, panels, selection, isDirty, recovery } =
     useUi()
   const xRef = useRef(null)
   const yRef = useRef(null)
@@ -93,8 +100,9 @@ export default function StatusBar() {
         {Math.round(zoom * 100)}%
       </span>
 
-      {/* Honest save state: a lying indicator is worse than none. Real
-          autosave/recovery arrives with the Phase 7 productivity pass. */}
+      {/* Two independent facts, kept apart: whether the file on disk matches
+          the canvas, and whether a recovery snapshot is armed. Conflating them
+          would mean either lying about autosave or implying a file was written. */}
       <span className="hidden items-center gap-1.5 md:flex">
         <span
           className={cn(
@@ -105,6 +113,14 @@ export default function StatusBar() {
         />
         {isDirty ? 'Unsaved changes' : 'No unsaved changes'}
       </span>
+
+      {recovery.status !== 'idle' && recovery.status !== 'offered' && (
+        <span className="hidden items-center gap-1.5 lg:flex">
+          <span className="h-4 w-px shrink-0 bg-white/10" />
+          <Icon name="clock" size={12} className="text-fg-subtle" />
+          {AUTOSAVE_LABELS[recovery.status] ?? recovery.status}
+        </span>
+      )}
     </footer>
   )
 }

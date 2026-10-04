@@ -13,6 +13,12 @@ import {
 } from '../../engine/io/codec.js'
 import { PROJECT_EXTENSION } from '../../engine/io/project.js'
 import {
+  clearSnapshot,
+  isAutosaveSupported,
+  loadSnapshot,
+  saveSnapshot,
+} from '../../engine/io/autosave.js'
+import {
   DEFAULT_DOC,
   DEFAULT_OPTIONS,
   DEFAULT_PALETTE,
@@ -21,6 +27,45 @@ import {
 
 let toastSeq = 0
 const MAX_RECENT_COLORS = 12
+
+/**
+ * How long the document must sit still before a recovery snapshot is written.
+ *
+ * Long enough that a burst of strokes collapses into a single serialisation,
+ * short enough that closing the tab a moment after drawing is usually safe.
+ */
+const AUTOSAVE_DEBOUNCE_MS = 2000
+
+/**
+ * How many recently used commands the palette remembers.
+ *
+ * Six is roughly one screenful of results: enough to build a muscle memory
+ * shortcut, few enough that the list still changes as the session progresses.
+ */
+const MAX_RECENT_COMMANDS = 6
+const RECENT_COMMANDS_KEY = 'aurora.recentCommands'
+
+/**
+ * Command recency survives a reload.
+ *
+ * Recency that resets every refresh is nearly useless — the whole point is to
+ * promote what *this* user reaches for, and that preference is stable over
+ * weeks. localStorage is right here (a handful of short ids, well under the
+ * quota) unlike the document snapshots, which go to IndexedDB.
+ *
+ * Reads are defensive: storage can throw in a hardened profile, and a missing
+ * recency list is never worth breaking the palette over.
+ */
+function readRecentCommands() {
+  try {
+    if (typeof localStorage === 'undefined') return []
+    const parsed = JSON.parse(localStorage.getItem(RECENT_COMMANDS_KEY) ?? '[]')
+    if (!Array.isArray(parsed)) return []
+    return parsed.filter((id) => typeof id === 'string').slice(0, MAX_RECENT_COMMANDS)
+  } catch {
+    return []
+  }
+}
 
 /** The engine lives outside React state — it owns the pixels. */
 const createEngine = (doc) => createEditor({ width: doc.width, height: doc.height, name: doc.name })
@@ -160,6 +205,41 @@ export default function UiProvider({ children }) {
   const pushRecent = rememberColor
   const clearRecent = useCallback(() => setRecentColors([]), [])
 
+  /* ------------------------------------------------- command recency (Phase 7) */
+
+  const [recentCommands, setRecentCommands] = useState(readRecentCommands)
+
+  /**
+   * Record that a command was run, most recent first.
+   *
+   * Called from the palette only. Running the same command twice does not
+   * promote it twice — repeating an action is not a stronger signal of
+   * preference than reaching for it once.
+   */
+  const noteCommand = useCallback((id) => {
+    if (!id) return
+    setRecentCommands((prev) => {
+      const next = [id, ...prev.filter((entry) => entry !== id)].slice(0, MAX_RECENT_COMMANDS)
+      try {
+        if (typeof localStorage !== 'undefined') {
+          localStorage.setItem(RECENT_COMMANDS_KEY, JSON.stringify(next))
+        }
+      } catch {
+        // A quota or privacy failure only costs us persistence next reload.
+      }
+      return next
+    })
+  }, [])
+
+  const clearRecentCommands = useCallback(() => {
+    setRecentCommands([])
+    try {
+      if (typeof localStorage !== 'undefined') localStorage.removeItem(RECENT_COMMANDS_KEY)
+    } catch {
+      // See noteCommand.
+    }
+  }, [])
+
   /* -------------------------------------------------------------------- view */
   // Zoom lives in the engine's viewport; the UI only mirrors it for readouts.
   const setZoom = useCallback((value) => engine.viewport.setScale(value), [engine])
@@ -168,7 +248,14 @@ export default function UiProvider({ children }) {
   const zoomOut = useCallback(() => engine.viewport.step(-1), [engine])
   const fitToScreen = useCallback(() => engine.fitToScreen(), [engine])
 
-  const setDoc = useCallback((patch) => engine.setDocument(patch), [engine])
+  /** Replacing the document invalidates any clipboard payload it held. */
+  const setDoc = useCallback(
+    (patch) => {
+      setHasClipboard(false)
+      return engine.setDocument(patch)
+    },
+    [engine],
+  )
 
   /* ------------------------------------------------------- engine ↔ UI sync */
 
@@ -272,11 +359,31 @@ export default function UiProvider({ children }) {
 
   const jumpHistory = useCallback((index) => engine.jumpHistory(index), [engine])
 
-  const copy = useCallback(() => engine.copySelection({ cut: false }), [engine])
-  const cut = useCallback(() => engine.copySelection({ cut: true }), [engine])
   const paste = useCallback(() => engine.pasteClipboard({ asNewLayer: true }), [engine])
   const deleteSelection = useCallback(() => engine.deleteSelection(), [engine])
   const selectAll = useCallback(() => engine.selectAll(), [engine])
+
+  /**
+   * Whether the engine holds anything to paste.
+   *
+   * The engine's clipboard is a plain field with no change event, so this is
+   * tracked here as a mirror — the palette needs it to decide whether "Paste"
+   * is a real option or a dead key. Set on copy/cut, cleared when the document
+   * is replaced, since the pixels that clipboard refers to no longer exist.
+   */
+  const [hasClipboard, setHasClipboard] = useState(false)
+
+  const copyToClipboard = useCallback(() => {
+    const ok = engine.copySelection({ cut: false })
+    if (ok) setHasClipboard(true)
+    return ok
+  }, [engine])
+
+  const cutToClipboard = useCallback(() => {
+    const ok = engine.copySelection({ cut: true })
+    if (ok) setHasClipboard(true)
+    return ok
+  }, [engine])
   const deselect = useCallback(() => engine.deselect(), [engine])
   const invertSelection = useCallback(() => engine.invertSelection(), [engine])
 
@@ -365,11 +472,95 @@ export default function UiProvider({ children }) {
   const [isDirty, setDirty] = useState(false)
   const [lastSavedAt, setLastSavedAt] = useState(null)
 
-  // Any recorded history entry means the document moved away from what was
-  // saved. Cheap, and it covers painting, layering and structural edits alike.
+  /**
+   * The history length at the moment of the last save.
+   *
+   * Comparing against a stored save point rather than latching `true` on the
+   * first edit is what makes undo behave correctly: paint three strokes, save,
+   * then undo twice lands back on the saved point, and the document is *not*
+   * dirty. A latched boolean would still claim unsaved changes for a document
+   * identical to the one on disk.
+   */
+  const savedLengthRef = useRef(0)
+  const entryCount = historyState.entries.length
+
+  /**
+   * Recovery is best-effort and invisible until it is needed.
+   *
+   * `status` is what the status bar reads: 'idle' while there is nothing to say,
+   * 'saving' during the debounce, 'saved' once a snapshot is on disk, and
+   * 'unavailable' if storage refused. Declared here because `markSaved` resets
+   * it, and hooks cannot be reordered to fix a reference that runs earlier.
+   */
+  const [recovery, setRecovery] = useState({ status: 'idle', savedAt: null })
+  const autosaveRef = useRef(0)
+
   useEffect(() => {
-    if (historyState.entries.length > 0) setDirty(true)
+    setDirty(entryCount !== savedLengthRef.current)
+  }, [entryCount])
+
+  /** Mark the current document as saved and drop its recovery snapshot. */
+  const markSaved = useCallback(() => {
+    savedLengthRef.current = historyState.entries.length
+    setDirty(false)
+    setLastSavedAt(Date.now())
+    // Cancel any in-flight autosave: letting it land would re-create the very
+    // snapshot we are about to delete, and the next launch would then offer to
+    // "recover" a document the user has already saved.
+    window.clearTimeout(autosaveRef.current)
+    setRecovery({ status: 'idle', savedAt: null })
+    void clearSnapshot()
   }, [historyState.entries.length])
+
+  /* ------------------------------------------------------- autosave/recovery */
+
+  // Look for a snapshot left behind by a previous session. Runs once on mount;
+  // the document is blank at that point, so there is nothing to lose by
+  // checking.
+  useEffect(() => {
+    let cancelled = false
+    loadSnapshot().then((record) => {
+      if (!cancelled && record) {
+        setRecovery({
+          status: 'offered',
+          savedAt: record.savedAt,
+          project: record.project,
+        })
+      }
+    })
+    return () => { cancelled = true }
+  }, [])
+
+  /**
+   * Debounced snapshot writer.
+   *
+   * Waiting for an idle gap matters more than it looks: serialising a layered
+   * document to base64 is real work, and doing it per stroke would drop frames
+   * while the user is actively painting. Two seconds of quiet is long enough to
+   * never notice, short enough to survive an accidental tab close.
+   */
+  const writeSnapshot = useCallback(() => {
+    if (!isDirty || !isAutosaveSupported()) return
+    setRecovery((prev) => (prev.status === 'saving' ? prev : { ...prev, status: 'saving' }))
+    window.clearTimeout(autosaveRef.current)
+    autosaveRef.current = window.setTimeout(async () => {
+      const savedAt = await saveSnapshot(engine.snapshotProject())
+      setRecovery(
+        savedAt
+          ? { status: 'saved', savedAt }
+          : // Storage refused. Say so rather than pretending recovery is armed.
+            { status: 'unavailable', savedAt: null },
+      )
+    }, AUTOSAVE_DEBOUNCE_MS)
+  }, [engine, isDirty])
+
+  // Re-arm the timer whenever the document moves away from the save point.
+  useEffect(() => {
+    if (isDirty) writeSnapshot()
+  }, [isDirty, entryCount, writeSnapshot])
+
+  // Clear the timer on unmount so a pending write cannot fire into a dead tree.
+  useEffect(() => () => window.clearTimeout(autosaveRef.current), [])
 
   /**
    * Run a file operation, turning any thrown Error into a readable toast.
@@ -397,6 +588,43 @@ export default function UiProvider({ children }) {
     [pushToast],
   )
 
+  /* --------------------------------------------------- recovery user actions */
+
+  /**
+   * Load a snapshot the user chose to recover.
+   *
+   * Declared after `runFileOp` deliberately: the callback closes over it, and
+   * referencing it earlier would hit the temporal dead zone on first render.
+   */
+  const recoverSnapshot = useCallback(
+    () =>
+      runFileOp(async () => {
+        const project = recovery.project
+        if (!project) throw new Error('There is no recovery snapshot to load.')
+        await engine.loadProject(JSON.stringify(project))
+        markSaved()
+        setRecovery({ status: 'idle', savedAt: null })
+        return true
+      }, {
+        success: 'Recovered your unsaved work',
+        failure: 'That snapshot could not be recovered',
+      }),
+    [engine, markSaved, recovery.project, runFileOp],
+  )
+
+  /** Dismiss the recovery prompt and delete the snapshot for good. */
+  const dismissRecovery = useCallback(async () => {
+    setRecovery({ status: 'idle', savedAt: null })
+    await clearSnapshot()
+  }, [])
+
+  /** Discard the snapshot and start from a clean document. */
+  const startFresh = useCallback(async () => {
+    await dismissRecovery()
+    setDoc(DEFAULT_DOC)
+    fitToScreen()
+  }, [dismissRecovery, fitToScreen, setDoc])
+
   /** Import an image on top of the current artwork as a new layer. */
   const importImageFile = useCallback(
     (file) =>
@@ -410,7 +638,12 @@ export default function UiProvider({ children }) {
   /** Open an image as a whole new document, replacing what is on screen. */
   const openImageFile = useCallback(
     (file) =>
-      runFileOp(() => engine.openImageFile(file), {
+      runFileOp(async () => {
+        await engine.openImageFile(file)
+        // A brand-new document: the old clipboard refers to pixels that are gone.
+        setHasClipboard(false)
+        return true
+      }, {
         success: `Opened ${file?.name ?? 'image'}`,
         failure: 'That image could not be opened',
       }),
@@ -426,14 +659,13 @@ export default function UiProvider({ children }) {
           type: 'application/json',
         })
         downloadBlob(blob, `${sanitizeFilename(engine.document.name)}.${PROJECT_EXTENSION}`)
-        setDirty(false)
-        setLastSavedAt(Date.now())
+        markSaved()
         return project
       }, {
         success: 'Project saved',
         failure: 'The project could not be saved',
       }),
-    [engine, runFileOp],
+    [engine, markSaved, runFileOp],
   )
 
   /** Load a `.aurora` project, replacing the current document. */
@@ -442,14 +674,18 @@ export default function UiProvider({ children }) {
       runFileOp(async () => {
         const text = await readFileAsText(file)
         await engine.loadProject(text)
-        setDirty(false)
-        setLastSavedAt(Date.now())
+        // loadProject clears history, so the save point moves to zero with it —
+        // an opened project starts clean, with nothing to recover.
+        markSaved()
+        // The clipboard held pixels from the old document, which no longer
+        // exists — offering to paste them would insert a stale payload.
+        setHasClipboard(false)
         return true
       }, {
         success: `Opened ${file?.name ?? 'project'}`,
         failure: 'That project could not be opened',
       }),
-    [engine, runFileOp],
+    [engine, markSaved, runFileOp],
   )
 
   /**
@@ -558,6 +794,9 @@ export default function UiProvider({ children }) {
       deleteLayer,
       renameLayer,
       moveLayer,
+      recentCommands,
+      noteCommand,
+      clearRecentCommands,
       /* files */
       isDirty,
       lastSavedAt,
@@ -568,6 +807,11 @@ export default function UiProvider({ children }) {
       openProjectFile,
       saveProject,
       exportImageFile,
+      /* recovery */
+      recovery,
+      recoverSnapshot,
+      dismissRecovery,
+      startFresh,
       /* chrome */
       panels,
       togglePanel,
@@ -589,29 +833,32 @@ export default function UiProvider({ children }) {
       undo,
       redo,
       jumpHistory,
-      copy,
-      cut,
+      copy: copyToClipboard,
+      cut: cutToClipboard,
       paste,
       deleteSelection,
       selectAll,
       deselect,
       invertSelection,
       selection: selectionState,
+      hasClipboard,
     }),
     [
       activeTool, setTool, options, setOption, resetOptions,
       primary, secondary, setPrimary, setSecondary, swapColors, resetColors,
       recentColors, pushRecent, clearRecent,
+      recentCommands, noteCommand, clearRecentCommands,
       doc, engine, setDoc, zoom, setZoom, zoomIn, zoomOut, zoomTo, fitScale, fitToScreen,
       layers, activeLayerId, selectLayer, toggleLayerVisibility, toggleLayerLock,
       setLayerOpacity, setLayerBlend, addLayer, duplicateLayer, deleteLayer, renameLayer, moveLayer,
       isDirty, lastSavedAt,
       openFile, openFilePicker,
       importImageFile, openImageFile, openProjectFile, saveProject, exportImageFile,
+      recovery, recoverSnapshot, dismissRecovery, startFresh,
       panels, togglePanel, dialogs, openDialog, closeDialog, closeAllDialogs, anyDialogOpen,
       toasts, pushToast, dismissToast,
-      historyState, selectionState, undo, redo, jumpHistory,
-      copy, cut, paste, deleteSelection, selectAll, deselect, invertSelection,
+      historyState, selectionState, hasClipboard, undo, redo, jumpHistory,
+      copyToClipboard, cutToClipboard, paste, deleteSelection, selectAll, deselect, invertSelection,
     ],
   )
 
