@@ -10,9 +10,11 @@ dist/
 npm-debug.log*
 
 # Dev-server output. The vite start scripts here write to these, and they are
-# local scratch — never worth committing.
+# local scratch â€” never worth committing.
 dev.out
 dev.err
+npm.out
+npm.err
 
 # Editor / OS
 .DS_Store
