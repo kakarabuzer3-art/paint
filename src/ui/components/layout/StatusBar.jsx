@@ -59,7 +59,7 @@ export default function StatusBar() {
 
   return (
     <footer
-      className="glass-2 glass-specular flex h-8 shrink-0 items-center gap-3 overflow-hidden rounded-[var(--radius-panel)] px-3 text-[10.5px] text-fg-subtle"
+      className="clay-2 flex h-8 shrink-0 items-center gap-3 overflow-hidden rounded-[var(--radius-panel)] px-3 text-[10.5px] text-fg-subtle"
       aria-label="Status"
     >
       {/*

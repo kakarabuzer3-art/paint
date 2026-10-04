@@ -153,7 +153,7 @@ export default function CommandPalette() {
   return createPortal(
     <div className="fixed inset-0 z-[110] flex items-start justify-center px-4 pt-[12vh] pb-8">
       <div
-        className="animate-fade absolute inset-0 bg-void/70 backdrop-blur-[6px]"
+        className="animate-fade absolute inset-0 bg-void/85"
         onMouseDown={() => ui.closeDialog('palette')}
         aria-hidden="true"
       />
@@ -165,7 +165,7 @@ export default function CommandPalette() {
         aria-label="Command palette"
         tabIndex={-1}
         onKeyDown={handleKeyDown}
-        className="glass-3 glass-specular animate-rise relative flex w-full max-w-xl flex-col overflow-hidden rounded-[var(--radius-lg)]"
+        className="clay-3 animate-rise relative flex w-full max-w-xl flex-col overflow-hidden rounded-[var(--radius-lg)]"
       >
         {/* ---------------------------------------------------------- search */}
         <div className="flex items-center gap-2.5 px-4 py-3">

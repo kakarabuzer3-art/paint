@@ -16,7 +16,7 @@ export default function Kbd({ children, size = 'md', className }) {
     <kbd
       className={cn(
         'inline-flex select-none items-center justify-center rounded-[6px] border border-line',
-        'bg-white/[0.07] font-mono font-medium text-fg-muted shadow-[0_1px_0_0_rgb(255_255_255/0.06)_inset]',
+        'bg-white/[0.07] font-mono font-medium text-fg-muted shadow-[2px_2px_5px_-2px_rgb(0_0_0/0.5),-1px_-1px_4px_-2px_rgb(255_255_255/0.04)]',
         size === 'sm' ? 'min-w-4 px-1 text-[9px] leading-[15px]' : 'min-w-5 px-1.5 text-[10px] leading-[17px]',
         className,
       )}

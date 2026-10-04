@@ -40,7 +40,7 @@ export default function Tooltip({
         role="tooltip"
         style={{ transitionDelay: `${delay}ms` }}
         className={cn(
-          'glass-solid pointer-events-none absolute z-50 flex items-center gap-2 whitespace-nowrap',
+          'clay-solid pointer-events-none absolute z-50 flex items-center gap-2 whitespace-nowrap',
           'rounded-[9px] px-2.5 py-1.5 text-[11px] font-medium tracking-tight text-fg',
           'opacity-0 shadow-black/50 transition-[opacity,transform] duration-150 ease-[var(--ease-out-soft)]',
           'scale-95 group-hover/tip:scale-100 group-hover/tip:opacity-100',
@@ -61,7 +61,7 @@ export function TooltipSurface({ children, className }) {
   return (
     <span
       className={cn(
-        'glass-solid rounded-[9px] px-2.5 py-1.5 text-[11px] font-medium tracking-tight text-fg',
+        'clay-solid rounded-[9px] px-2.5 py-1.5 text-[11px] font-medium tracking-tight text-fg',
         className,
       )}
     >

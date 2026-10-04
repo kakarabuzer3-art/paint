@@ -3,7 +3,7 @@ import { cn } from '../../../lib/cn.js'
 import Icon from '../../icons/Icon.jsx'
 
 /**
- * A collapsible glass section inside the inspector.
+ * A collapsible clay section inside the inspector.
  *
  * Progressive disclosure: the common controls (colour, layers) stay open,
  * secondary detail collapses so the panel never becomes a wall of sliders.

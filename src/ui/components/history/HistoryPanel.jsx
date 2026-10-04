@@ -22,10 +22,10 @@ export default function HistoryPanel() {
   return (
     <div className="flex flex-col gap-2.5">
       <div className="flex items-center gap-1.5">
-        <Button size="sm" variant="glass" icon="undo" disabled={!canUndo} onClick={undo}>
+        <Button size="sm" variant="clay" icon="undo" disabled={!canUndo} onClick={undo}>
           Undo
         </Button>
-        <Button size="sm" variant="glass" icon="redo" disabled={!canRedo} onClick={redo}>
+        <Button size="sm" variant="clay" icon="redo" disabled={!canRedo} onClick={redo}>
           Redo
         </Button>
         <span className="ml-auto font-mono text-[10px] text-fg-subtle tabular-nums">

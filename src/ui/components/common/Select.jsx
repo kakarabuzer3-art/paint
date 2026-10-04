@@ -4,7 +4,7 @@ import Icon from '../../icons/Icon.jsx'
 import Field from './Field.jsx'
 
 /**
- * Native <select> in glass clothing.
+ * Native <select> in clay clothing.
  *
  * A native element is intentional: it keeps platform keyboard behaviour,
  * type-ahead, and the OS picker on mobile — all of which a div-based menu

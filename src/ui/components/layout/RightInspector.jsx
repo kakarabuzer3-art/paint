@@ -20,7 +20,7 @@ export default function RightInspector() {
   return (
     <aside
       aria-label="Inspector"
-      className="glass-2 glass-specular scroll-slim flex w-[266px] shrink-0 flex-col overflow-y-auto rounded-[var(--radius-panel)]"
+      className="clay-2 scroll-slim flex w-[266px] shrink-0 flex-col overflow-y-auto rounded-[var(--radius-panel)]"
     >
       <PanelSection
         title="Colour"

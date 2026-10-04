@@ -14,7 +14,7 @@ const WIDTHS = {
 }
 
 /**
- * Accessible glass dialog.
+ * Accessible clay dialog.
  *
  * Responsibilities kept in one place so no caller can forget them:
  *   - Escape to dismiss, backdrop click to dismiss
@@ -94,7 +94,7 @@ export default function Modal({
       onKeyDown={handleKeyDown}
     >
       <div
-        className="animate-fade absolute inset-0 bg-void/70 backdrop-blur-[6px]"
+        className="animate-fade absolute inset-0 bg-void/85"
         onClick={onClose}
         aria-hidden="true"
       />
@@ -107,7 +107,7 @@ export default function Modal({
         aria-describedby={description ? descId : undefined}
         tabIndex={-1}
         className={cn(
-          'glass-3 glass-specular animate-rise relative w-full overflow-hidden rounded-[var(--radius-lg)] outline-none',
+          'clay-3 animate-rise relative w-full overflow-hidden rounded-[var(--radius-lg)] outline-none',
           WIDTHS[size] ?? WIDTHS.md,
         )}
       >

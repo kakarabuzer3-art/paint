@@ -153,10 +153,10 @@ export default function CanvasStage() {
           costs nothing during normal painting. */}
       {isDragging && (
         <div
-          className="pointer-events-none absolute inset-0 z-20 grid place-items-center bg-aurora-violet/12 backdrop-blur-[3px]"
+          className="pointer-events-none absolute inset-0 z-20 grid place-items-center bg-aurora-violet/18"
           aria-hidden="true"
         >
-          <div className="glass-solid flex flex-col items-center gap-2 rounded-[18px] border border-dashed border-aurora-cyan/60 px-8 py-6 text-center">
+          <div className="clay-solid flex flex-col items-center gap-2 rounded-[18px] border border-dashed border-aurora-cyan/60 px-8 py-6 text-center">
             <Icon name="image" size={26} className="text-aurora-cyan" />
             <p className="text-[13px] font-semibold text-fg">Drop to open</p>
             <p className="max-w-[24ch] text-[11px] text-fg-subtle">
@@ -174,7 +174,7 @@ function HudChip({ children, className }) {
   return (
     <div
       className={cn(
-        'glass pointer-events-none absolute z-10 flex items-center gap-1.5 rounded-[10px] px-2.5 py-1.5 text-[11px]',
+        'clay pointer-events-none absolute z-10 flex items-center gap-1.5 rounded-[10px] px-2.5 py-1.5 text-[11px]',
         className,
       )}
     >
@@ -185,7 +185,7 @@ function HudChip({ children, className }) {
 
 function HintChip({ children }) {
   return (
-    <p className="glass pointer-events-none absolute bottom-3 left-1/2 z-10 -translate-x-1/2 rounded-full px-3 py-1.5 text-[10.5px] text-fg-subtle">
+    <p className="clay pointer-events-none absolute bottom-3 left-1/2 z-10 -translate-x-1/2 rounded-full px-3 py-1.5 text-[10.5px] text-fg-subtle">
       {children}
     </p>
   )

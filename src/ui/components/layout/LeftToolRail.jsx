@@ -60,7 +60,7 @@ export default function LeftToolRail() {
           <button
             type="button"
             aria-label="Show tools"
-            className="glass grid h-8 w-8 place-items-center rounded-[10px] text-fg-muted transition-colors hover:text-fg"
+            className="clay grid h-8 w-8 place-items-center rounded-[10px] text-fg-muted transition-colors hover:text-fg"
           >
             <Icon name="chevronRight" size={15} />
           </button>
@@ -75,7 +75,7 @@ export default function LeftToolRail() {
       aria-orientation="vertical"
       role="toolbar"
       onKeyDown={handleKeyDown}
-      className="glass-2 glass-specular scroll-slim flex w-[54px] shrink-0 flex-col items-center gap-1 overflow-y-auto rounded-[var(--radius-panel)] py-2"
+      className="clay-2 scroll-slim flex w-[54px] shrink-0 flex-col items-center gap-1 overflow-y-auto rounded-[var(--radius-panel)] py-2"
     >
       {TOOL_GROUPS.map((group, groupIndex) => (
         <div key={group.id} className="flex flex-col items-center gap-1">

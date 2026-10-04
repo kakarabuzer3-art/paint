@@ -24,7 +24,7 @@ export default function OptionsBar() {
 
   return (
     <div
-      className="glass-2 glass-specular flex shrink-0 items-center gap-3 overflow-x-auto rounded-[var(--radius-panel)] px-2.5 py-1.5 scroll-slim"
+      className="clay-2 flex shrink-0 items-center gap-3 overflow-x-auto rounded-[var(--radius-panel)] px-2.5 py-1.5 scroll-slim"
       aria-label={`${tool.label} options`}
     >
       {/* Active tool identity — always visible so the user knows which tool

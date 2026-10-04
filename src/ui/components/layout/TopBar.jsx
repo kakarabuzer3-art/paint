@@ -42,12 +42,7 @@ export default function TopBar() {
   const lastRedoLabel = historyEntries.at(-1)?.label ?? ''
 
   return (
-    <header className="glass-2 glass-specular relative flex h-12 shrink-0 items-center gap-2 overflow-hidden rounded-[var(--radius-panel)] px-2.5">
-      {/* Slow specular sweep — the only purely decorative motion in the chrome. */}
-      <span
-        aria-hidden="true"
-        className="animate-sheen pointer-events-none absolute inset-y-0 -left-1/3 w-1/3 bg-[linear-gradient(100deg,transparent,rgb(255_255_255/0.05),transparent)]"
-      />
+    <header className="clay-2 flex h-12 shrink-0 items-center gap-2 rounded-[var(--radius-panel)] px-2.5">
 
       {/* ---------------------------------------------------------- identity */}
       <div className="flex shrink-0 items-center gap-2.5 pl-0.5">
@@ -81,7 +76,7 @@ export default function TopBar() {
             'tracking-tight text-fg transition-colors duration-150 hover:bg-white/[0.06] focus:bg-white/[0.08]',
           )}
         />
-        <span className="glass hidden items-center rounded-full px-2 py-0.5 font-mono text-[10px] text-fg-muted tabular-nums xl:inline-flex">
+        <span className="clay hidden items-center rounded-full px-2 py-0.5 font-mono text-[10px] text-fg-muted tabular-nums xl:inline-flex">
           {doc.width} × {doc.height}
         </span>
       </div>
@@ -159,7 +154,7 @@ export default function TopBar() {
         type="button"
         onClick={() => openDialog('palette')}
         className={cn(
-          'glass hidden h-8 shrink-0 items-center gap-2 rounded-[10px] px-2.5 text-[11.5px] text-fg-subtle',
+          'clay hidden h-8 shrink-0 items-center gap-2 rounded-[10px] px-2.5 text-[11.5px] text-fg-subtle',
           'transition-colors duration-150 hover:bg-white/[0.09] hover:text-fg-muted lg:flex',
         )}
       >
@@ -218,7 +213,7 @@ function ZoomControls() {
   const { zoom, zoomIn, zoomOut, zoomTo, fitToScreen } = useUi()
 
   return (
-    <div className="glass flex shrink-0 items-center gap-0.5 rounded-[10px] p-0.5">
+    <div className="clay flex shrink-0 items-center gap-0.5 rounded-[10px] p-0.5">
       <Tooltip label="Zoom out" shortcut="−">
         <span>
           <IconButton icon="minus" label="Zoom out" size="xs" onClick={zoomOut} />

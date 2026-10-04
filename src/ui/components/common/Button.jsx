@@ -5,7 +5,7 @@ import Kbd from './Kbd.jsx'
 const VARIANTS = {
   primary:
     'bg-gradient-to-br from-aurora-violet to-aurora-indigo text-white shadow-[0_10px_26px_-12px_rgb(139_92_246/0.9),inset_0_1px_0_0_rgb(255_255_255/0.24)] hover:brightness-110',
-  glass: 'glass text-fg hover:bg-white/[0.1]',
+  clay: 'clay text-fg hover:bg-white/[0.1]',
   ghost: 'text-fg-muted hover:bg-white/[0.07] hover:text-fg',
   danger: 'bg-rose-500/90 text-white hover:bg-rose-500',
 }
@@ -23,7 +23,7 @@ const SIZES = {
 export default function Button({
   children,
   icon,
-  variant = 'glass',
+  variant = 'clay',
   size = 'md',
   trailingIcon,
   shortcut,
@@ -39,7 +39,7 @@ export default function Button({
         'transition-[background-color,color,box-shadow,filter,transform] duration-150',
         'ease-[var(--ease-out-soft)] active:scale-[0.97] disabled:pointer-events-none disabled:opacity-45',
         SIZES[size] ?? SIZES.md,
-        VARIANTS[variant] ?? VARIANTS.glass,
+        VARIANTS[variant] ?? VARIANTS.clay,
         className,
       )}
       {...rest}

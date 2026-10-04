@@ -31,7 +31,7 @@ export default function Toaster() {
           <div
             key={toast.id}
             className={cn(
-              'glass-3 animate-rise pointer-events-auto flex w-full items-start gap-2.5 rounded-[13px] border px-3 py-2.5',
+              'clay-3 animate-rise pointer-events-auto flex w-full items-start gap-2.5 rounded-[13px] border px-3 py-2.5',
               tone.ring,
             )}
           >

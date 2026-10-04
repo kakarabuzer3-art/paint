@@ -10,7 +10,7 @@ const SIZES = {
 
 const VARIANTS = {
   ghost: 'text-fg-muted hover:bg-white/[0.07] hover:text-fg',
-  glass: 'glass text-fg-muted hover:bg-white/[0.1] hover:text-fg',
+  clay: 'clay text-fg-muted hover:bg-white/[0.1] hover:text-fg',
   subtle: 'bg-white/[0.05] text-fg hover:bg-white/[0.1]',
 }
 
