@@ -9,6 +9,11 @@ dist/
 *.log
 npm-debug.log*
 
+# Dev-server output. The vite start scripts here write to these, and they are
+# local scratch — never worth committing.
+dev.out
+dev.err
+
 # Editor / OS
 .DS_Store
 Thumbs.db
