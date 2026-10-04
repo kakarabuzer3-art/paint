@@ -20,6 +20,19 @@ import CanvasStage from '../canvas/CanvasStage.jsx'
 export default function AppShell() {
   return (
     <div className="relative z-10 flex h-full flex-col gap-2 p-2 sm:gap-2.5 sm:p-2.5">
+      {/*
+        Skip link. The shell is one long row of icon buttons and sliders, so a
+        keyboard user would otherwise have to Tab through every control to
+        reach the artwork. `sr-only` until focused, then it becomes a real
+        target above the top bar.
+      */}
+      <a
+        href="#canvas-stage"
+        className="sr-only rounded-[10px] bg-aurora-violet px-3 py-2 text-[13px] font-medium text-white focus:not-sr-only focus:absolute focus:left-2.5 focus:top-2.5 focus:z-50"
+      >
+        Skip to canvas
+      </a>
+
       <TopBar />
 
       <div className="flex min-h-0 flex-1 gap-2 sm:gap-2.5">

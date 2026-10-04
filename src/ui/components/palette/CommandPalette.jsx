@@ -7,6 +7,10 @@ import { highlightSegments, rankItems } from '../../hooks/useFuzzyMatch.js'
 import { buildCommands, GROUP_ORDER } from './commands.js'
 import { useUi } from '../../state/context.js'
 
+/** Focusable descendants, matching the Modal's selector so traps behave alike. */
+const FOCUSABLE =
+  'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
+
 /** Resolve a command's label, which may be a function of live UI state. */
 function labelOf(command) {
   return typeof command.label === 'function' ? command.label() : command.label
@@ -25,12 +29,16 @@ export default function CommandPalette() {
   const [query, setQuery] = useState('')
   const [activeIndex, setActiveIndex] = useState(0)
   const inputRef = useRef(null)
+  const panelRef = useRef(null)
   const restoreRef = useRef(null)
   const itemRefs = useRef([])
 
   const open = ui.dialogs.palette
 
-  const commands = useMemo(() => buildCommands(ui), [ui])
+  // `ui` is a fresh object on every provider render, so building the command
+  // list is skipped entirely while the palette is closed — otherwise each
+  // stroke would allocate ~40 command objects for a list nobody can see.
+  const commands = useMemo(() => (open ? buildCommands(ui) : []), [open, ui])
   const ranked = useMemo(
     () => rankItems(query, commands, ui.recentCommands),
     [query, commands, ui.recentCommands],
@@ -88,6 +96,28 @@ export default function CommandPalette() {
 
   const handleKeyDown = useCallback(
     (event) => {
+      // This dialog declares aria-modal, so Tab must not escape it. Without
+      // the trap, focus walks into the app behind the overlay where it is
+      // invisible and meaningless — the classic half-modal failure.
+      if (event.key === 'Tab') {
+        const nodes = Array.from(panelRef.current?.querySelectorAll(FOCUSABLE) ?? []).filter(
+          (node) => node.offsetParent !== null,
+        )
+        if (nodes.length === 0) return
+        const first = nodes[0]
+        const last = nodes[nodes.length - 1]
+        const active = document.activeElement
+
+        if (event.shiftKey && (active === first || active === panelRef.current)) {
+          event.preventDefault()
+          last.focus()
+        } else if (!event.shiftKey && active === last) {
+          event.preventDefault()
+          first.focus()
+        }
+        return
+      }
+
       switch (event.key) {
         case 'Escape':
           event.preventDefault()
@@ -129,9 +159,12 @@ export default function CommandPalette() {
       />
 
       <div
+        ref={panelRef}
         role="dialog"
         aria-modal="true"
         aria-label="Command palette"
+        tabIndex={-1}
+        onKeyDown={handleKeyDown}
         className="glass-3 glass-specular animate-rise relative flex w-full max-w-xl flex-col overflow-hidden rounded-[var(--radius-lg)]"
       >
         {/* ---------------------------------------------------------- search */}

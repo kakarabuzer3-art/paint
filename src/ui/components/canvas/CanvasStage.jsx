@@ -101,7 +101,12 @@ export default function CanvasStage() {
   return (
     <div
       ref={containerRef}
-      className="relative min-h-0 flex-1 overflow-hidden rounded-[var(--radius-panel)]"
+      id="canvas-stage"
+      tabIndex={-1}
+      // `contain` isolates layout and paint so zooming and panning the document
+      // cannot invalidate anything outside the stage — the overlay, the HUD
+      // chips and the rest of the shell all stay untouched.
+      className="relative min-h-0 flex-1 overflow-hidden rounded-[var(--radius-panel)] [contain:layout_paint] focus:outline-none"
       role="application"
       aria-label={`Drawing canvas: ${doc.name}, ${doc.width} by ${doc.height} pixels`}
     >

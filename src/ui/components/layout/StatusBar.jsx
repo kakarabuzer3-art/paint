@@ -62,8 +62,17 @@ export default function StatusBar() {
       className="glass-2 glass-specular flex h-8 shrink-0 items-center gap-3 overflow-hidden rounded-[var(--radius-panel)] px-3 text-[10.5px] text-fg-subtle"
       aria-label="Status"
     >
-      {/* Current tool + its guidance, always visible for learning. */}
-      <span className="flex min-w-0 items-center gap-1.5 text-fg-muted">
+      {/*
+        Current tool + its guidance, always visible for learning. The tool
+        change is announced politely because every other surface announces its
+        own changes — a tool switch is otherwise a silent, invisible state
+        change for anyone not looking at the rail.
+      */}
+      <span
+        className="flex min-w-0 items-center gap-1.5 text-fg-muted"
+        role="status"
+        aria-live="polite"
+      >
         <Icon name={tool.icon} size={13} className="shrink-0 text-aurora-cyan" />
         <span className="truncate font-medium">{tool.label}</span>
         <span className="hidden truncate text-fg-subtle lg:inline">— {tool.hint}</span>

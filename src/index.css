@@ -328,3 +328,51 @@
     scroll-behavior: auto !important;
   }
 }
+
+/* =========================================================================
+   FORCED COLORS — Windows High Contrast / forced-colors: active.
+
+   This shell is built entirely from translucent glass: every panel gets its
+   separation from backdrop-blur plus a 6% white overlay. Forced-colors mode
+   deliberately discards author backgrounds and borders, which would leave the
+   UI as unlabelled black boxes on black — technically "high contrast" and
+   practically unusable. System colours are opted back in explicitly here.
+   ========================================================================= */
+@media (forced-colors: active) {
+  /* Panels keep their shape via a real border, since the fill is gone. */
+  .glass,
+  .glass-2,
+  .glass-3,
+  .glass-solid,
+  .well {
+    background: Canvas !important;
+    border: 1px solid CanvasText !important;
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+    box-shadow: none !important;
+  }
+
+  /* Force the system palette onto text and icons. */
+  body,
+  button,
+  input,
+  select,
+  textarea {
+    color: CanvasText !important;
+  }
+
+  /* Active/selected states must survive without a background to tint. */
+  [aria-pressed='true'],
+  [aria-checked='true'],
+  [aria-selected='true'],
+  [data-active='true'] {
+    background: Highlight !important;
+    color: HighlightText !important;
+    forced-color-adjust: none;
+  }
+
+  /* Focus must be unmistakable when the outline colour is overridden. */
+  :focus-visible {
+    outline: 2px solid Highlight !important;
+  }
+}

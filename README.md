@@ -30,7 +30,7 @@ npm run build     # check + production build
 | 5 | Layers + Text | done |
 | 6 | Import/export + file features | done |
 | 7 | Smart productivity features | done |
-| 8 | Visual polish + performance + accessibility | pending |
+| 8 | Visual polish + performance + accessibility | done |
 | 9 | Final testing + competition demo polish | pending |
 
 ## Architecture rules (do not break these)

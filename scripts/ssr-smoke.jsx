@@ -32,6 +32,10 @@ const markers = [
   // section shell rather than rows — assert the shell, not the data.
   ['inspector layers section', 'Layers'],
   ['history empty state', 'scrub back through your work'],
+  // Phase 8 accessibility landmarks.
+  ['skip link', 'Skip to canvas'],
+  ['canvas application role', 'role="application"'],
+  ['canvas focus target', 'id="canvas-stage"'],
 ]
 
 const missing = markers.filter(([, value]) => !flat.includes(value))
