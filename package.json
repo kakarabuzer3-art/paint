@@ -6,6 +6,7 @@
   "description": "Aurora Paint - a premium glassmorphism creative studio app built on the HTML5 Canvas API.",
   "scripts": {
     "dev": "vite",
+    "start": "vite",
     "check": "node scripts/check-imports.mjs",
     "engine": "node scripts/engine-smoke.mjs",
     "pure": "node scripts/pure-smoke.mjs",

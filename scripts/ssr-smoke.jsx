@@ -40,24 +40,60 @@ const markers = [
   // bar and the mode label are the proof it is actually on.
   ['simple mode label', 'Simple'],
   ['material picker', 'Material'],
+  // Proof the clay conversion reached the rendered tree, not just the stylesheet:
+  // .glass would still appear here if any component had been missed.
+  ['clay panel class', 'clay-2'],
+  ['clay chip class', 'clay '],
+  // With no material applied the picker must say so rather than inventing a
+  // name. ("Marker" only appears once the menu is opened, which SSR cannot do.)
+  ['material shows custom when unmatched', 'Custom'],
+]
+
+/**
+ * Substrings that must be ABSENT.
+ *
+ * Positive assertions alone cannot catch a regression that *adds* something.
+ * These three are the failures worth catching silently: a component left on
+ * .glass, Simple mode quietly reverting, or the advanced controls creeping
+ * back into the default view.
+ */
+const forbidden = [
+  ['glass classes fully removed', 'glass'],
+  ['simple mode hides advanced sliders', 'Smoothing'],
+  ['simple mode hides spacing', 'Spacing'],
 ]
 
 const missing = markers.filter(([, value]) => !flat.includes(value))
+const present = forbidden.filter(([, value]) => flat.includes(value))
 
-if (missing.length > 0) {
-  // Dump the rendered markup so the failure is inspectable, not a guess.
+const dump = () => {
   try {
     writeFileSync(new URL('../.smoke/rendered.html', import.meta.url), html)
     console.error('Rendered markup written to .smoke/rendered.html')
   } catch {
-    /* best effort — the assertions below still matter */
+    /* best effort — the assertions themselves still matter */
   }
-
-  console.error(`SSR smoke FAILED — missing ${missing.length} marker(s):`)
-  for (const [label, value] of missing) console.error(`  - ${label}: "${value}"`)
-  process.exit(1)
 }
 
+if (missing.length > 0 || present.length > 0) {
+  // Dump the rendered markup so the failure is inspectable, not a guess.
+  dump()
+}
+
+if (missing.length > 0) {
+  console.error(`SSR smoke FAILED — missing ${missing.length} marker(s):`)
+  for (const [label, value] of missing) console.error(`  - ${label}: "${value}"`)
+}
+
+if (present.length > 0) {
+  console.error(`SSR smoke FAILED — ${present.length} forbidden string(s) rendered:`)
+  for (const [label, value] of present) console.error(`  - ${label}: "${value}"`)
+}
+
+if (missing.length > 0 || present.length > 0) process.exit(1)
+
 console.log(
-  `SSR smoke OK — ${html.length} bytes rendered; ${markers.length}/${markers.length} markers present.`,
+  `SSR smoke OK — ${html.length} bytes rendered; ` +
+    `${markers.length}/${markers.length} markers present, ` +
+    `${forbidden.length}/${forbidden.length} forbidden strings absent.`,
 )
